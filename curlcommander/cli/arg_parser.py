@@ -120,6 +120,7 @@ def build_request_parser() -> argparse.ArgumentParser:
         help="Multipart field/file (repeatable)",
     )
     parser.add_argument("--proxy", metavar="URL", help="Proxy URL to route the request through")
+    parser.add_argument("--burp", action="store_true", help="Shortcut for --proxy http://127.0.0.1:8080 --no-verify")
     parser.add_argument("--retry", type=int, default=0, metavar="N", help="Number of retry attempts on network error")
     parser.add_argument("--retry-delay", type=float, default=0.0, metavar="SECONDS", help="Delay between retries")
     parser.add_argument("--compressed", action="store_true", help="Request compressed response")

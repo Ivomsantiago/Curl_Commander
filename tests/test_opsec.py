@@ -160,3 +160,22 @@ def test_cli_evidence_saved(tmp_path):
     saved = list(evdir.rglob("meta.json"))
     assert saved
     assert json.loads(saved[0].read_text())["engagement"] == "ENG-7"
+
+
+@respx.mock
+def test_cli_burp_shortcut_sets_proxy_and_no_verify(monkeypatch):
+    import curlcommander.cli.runner as r
+
+    captured = {}
+
+    async def fake_send(config):
+        captured["proxy"] = config.proxy
+        captured["verify"] = config.verify_ssl
+        from curlcommander.core.request_model import ResponseResult
+
+        return ResponseResult(200, "OK", {}, "ok", "text/plain", 1.0, 2, None)
+
+    monkeypatch.setattr(r, "send", fake_send)
+    r.run_cli(_args(url="https://api.target.com/x", burp=True))
+    assert captured["proxy"] == "http://127.0.0.1:8080"
+    assert captured["verify"] is False

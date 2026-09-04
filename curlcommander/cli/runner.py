@@ -193,6 +193,13 @@ def _run_request(args, repo: HistoryRepo) -> int:
     # API styles (2B.6): reshape the config for GraphQL / SOAP / XML / gRPC-web.
     config = _apply_api_style(config, args)
 
+    # --burp shortcut (2B.7): route through Burp/ZAP and skip TLS verify.
+    if getattr(args, "burp", False):
+        if not config.proxy:
+            config.proxy = "http://127.0.0.1:8080"
+        config.verify_ssl = False
+        _console.print("[yellow]routing through Burp (127.0.0.1:8080), TLS verification off[/yellow]")
+
     # Scope allowlist enforcement (2B.8): refuse out-of-scope targets.
     if getattr(args, "scope", None):
         scope.enforce(config.url, scope.load_scope(args.scope))
