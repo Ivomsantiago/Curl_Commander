@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
+from curlcommander.core.redaction import has_redacted, redact_config, reveal_config, reveal_text
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.core.response_formatter import format_body, get_lexer
 from curlcommander.storage.history_repo import HistoryRepo
@@ -29,15 +31,16 @@ EXIT_HTTP = 22        # --fail and HTTP status >= 400 (matches curl --fail)
 def run_cli(args) -> int:
     repo = HistoryRepo(DB_PATH)
     try:
+        reveal = getattr(args, "reveal", False)
         match args.subcommand:
             case "history":
-                return _show_history(repo)
+                return _show_history(repo, reveal=reveal)
             case "replay":
                 return _replay(repo, args.id)
             case "curl":
-                return _show_curl_from_history(repo, args.id)
+                return _show_curl_from_history(repo, args.id, reveal=reveal)
             case "export-history":
-                return _export_history(repo, args.output)
+                return _export_history(repo, args.output, reveal=reveal)
             case "delete-history":
                 return _delete_history(repo, args.id)
             case "clear-history":
@@ -57,11 +60,13 @@ def run_cli(args) -> int:
 # Subcommand handlers
 # ---------------------------------------------------------------------------
 
-def _show_history(repo: HistoryRepo) -> int:
+def _show_history(repo: HistoryRepo, reveal: bool = False) -> int:
     entries = repo.load()
     if not entries:
         _console.print("[dim]No history entries.[/dim]")
         return EXIT_OK
+
+    env = dict(os.environ)
 
     table = Table(title="Request History", show_lines=False)
     table.add_column("ID", style="dim", justify="right")
@@ -73,11 +78,12 @@ def _show_history(repo: HistoryRepo) -> int:
 
     for entry in entries:
         style = _status_style(entry.status_code)
+        url = reveal_text(entry.request.url, env) if reveal else entry.request.url
         table.add_row(
             str(entry.id),
             entry.timestamp,
             entry.request.method,
-            entry.request.url,
+            url,
             f"[{style}]{entry.status_code or 'ERR'}[/{style}]",
             f"{entry.duration_ms:.0f}",
         )
@@ -92,22 +98,34 @@ def _replay(repo: HistoryRepo, id: int) -> int:
         _console.print(f"[red]No history entry with ID {id}.[/red]")
         return EXIT_USAGE
 
+    # Stored requests are redacted; resolve {{VAR}} references from the
+    # environment and refuse to send an unrecoverable REDACTED credential (1.4).
+    prepared = reveal_config(entry.request, dict(os.environ))
+    if has_redacted(prepared):
+        _console.print(
+            "[red]Cannot replay: a credential was redacted at save time.[/red] "
+            "Re-run with the original --env-file/env vars set, or the request "
+            "was saved with a literal secret that is no longer stored."
+        )
+        return EXIT_USAGE
+
     _console.print(f"[dim]Replaying #{id}…[/dim]")
-    return _execute_request(entry.request, repo)
+    return _execute_request(prepared, repo)
 
 
-def _show_curl_from_history(repo: HistoryRepo, id: int) -> int:
+def _show_curl_from_history(repo: HistoryRepo, id: int, reveal: bool = False) -> int:
     entry = repo.get_by_id(id)
     if entry is None:
         _console.print(f"[red]No history entry with ID {id}.[/red]")
         return EXIT_USAGE
 
-    _print_curl(entry.curl_cmd)
+    curl_cmd = reveal_text(entry.curl_cmd, dict(os.environ)) if reveal else entry.curl_cmd
+    _print_curl(curl_cmd)
     return EXIT_OK
 
 
-def _export_history(repo: HistoryRepo, output: str) -> int:
-    repo.export_json(output)
+def _export_history(repo: HistoryRepo, output: str, reveal: bool = False) -> int:
+    repo.export_json(output, reveal=reveal)
     _console.print(f"[green]History exported to[/green] [bold]{output}[/bold]")
     return EXIT_OK
 
@@ -117,33 +135,47 @@ def _export_history(repo: HistoryRepo, output: str) -> int:
 # ---------------------------------------------------------------------------
 
 def _run_request(args, repo: HistoryRepo) -> int:
+    no_redact = getattr(args, "no_redact", False)
+    if no_redact:
+        _console.print(
+            "[yellow]warning: --no-redact stores credentials in clear text in the history DB[/yellow]",
+        )
     if not args.url:
         from curlcommander.cli.wizard import run_wizard
         config = run_wizard()
         if config is None:
             return EXIT_OK
+        env_vars: dict[str, str] = {}
     else:
-        config = _build_config(args)
+        env_vars = _load_env_file(args.env_file) if args.env_file else {}
+        config = _build_config(args, env_vars)
 
     if args.curl_only:
         curl_cmd = build_curl(config)
         _print_curl(curl_cmd)
         if args.save:
-            _persist(config, None, 0.0, curl_cmd, repo)
+            _persist(config, None, 0.0, repo, env_vars=env_vars, no_redact=no_redact)
         return EXIT_OK
 
-    return _execute_request(config, repo, fail=getattr(args, "fail", False))
+    return _execute_request(
+        config, repo, fail=getattr(args, "fail", False), env_vars=env_vars, no_redact=no_redact
+    )
 
 
-def _execute_request(config: RequestConfig, repo: HistoryRepo, fail: bool = False) -> int:
-    curl_cmd = build_curl(config)
+def _execute_request(
+    config: RequestConfig,
+    repo: HistoryRepo,
+    fail: bool = False,
+    env_vars: dict[str, str] | None = None,
+    no_redact: bool = False,
+) -> int:
     _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
 
     result = asyncio.run(send(config))
 
     if result.error:
         _console.print(f"[red bold]Error:[/red bold] {result.error}")
-        _persist(config, None, result.duration_ms, curl_cmd, repo)
+        _persist(config, None, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
         return EXIT_NETWORK
 
     style = _status_style(result.status_code)
@@ -182,7 +214,7 @@ def _execute_request(config: RequestConfig, repo: HistoryRepo, fail: bool = Fals
                 f" ({result.size_bytes} B total){hint}[/yellow]"
             )
 
-    _persist(config, result.status_code, result.duration_ms, curl_cmd, repo)
+    _persist(config, result.status_code, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
 
     if fail and result.status_code is not None and result.status_code >= 400:
         return EXIT_HTTP
@@ -193,7 +225,8 @@ def _execute_request(config: RequestConfig, repo: HistoryRepo, fail: bool = Fals
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _build_config(args) -> RequestConfig:
+def _build_config(args, env_vars: dict[str, str] | None = None) -> RequestConfig:
+    env_vars = env_vars if env_vars is not None else (_load_env_file(args.env_file) if args.env_file else {})
     headers = parse_headers(args.headers)
     params = parse_params(args.params)
 
@@ -217,11 +250,11 @@ def _build_config(args) -> RequestConfig:
     elif args.auth_apikey:
         auth_type, auth_value = "apikey", args.auth_apikey
 
-    env_vars = _load_env_file(args.env_file) if args.env_file else {}
     url = _substitute_variables(args.url or "", env_vars)
     headers = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in headers])
     params = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in params])
     body = _substitute_variables(body, env_vars)
+    auth_value = _substitute_variables(auth_value, env_vars)
 
     return RequestConfig(
         method=args.method.upper(),
@@ -251,16 +284,20 @@ def _persist(
     config: RequestConfig,
     status_code: int | None,
     duration_ms: float,
-    curl_cmd: str,
     repo: HistoryRepo,
+    env_vars: dict[str, str] | None = None,
+    no_redact: bool = False,
 ) -> None:
+    # Redact secrets before they ever touch disk (1.5). The stored curl is
+    # regenerated from the redacted config so it can never leak a token either.
+    stored = config if no_redact else redact_config(config, env_vars or {})
     entry = HistoryEntry(
         id=0,
         timestamp=datetime.now().isoformat(timespec="seconds"),
-        request=config,
+        request=stored,
         status_code=status_code,
         duration_ms=duration_ms,
-        curl_cmd=curl_cmd,
+        curl_cmd=build_curl(stored),
     )
     repo.save(entry)
 

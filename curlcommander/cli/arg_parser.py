@@ -39,6 +39,7 @@ def build_request_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-redirect", action="store_true", help="Do not follow redirects")
     parser.add_argument("--no-verify", action="store_true", help="Disable SSL certificate verification")
     parser.add_argument("--timeout", type=float, default=30.0, metavar="SECONDS", help="Request timeout (default: 30)")
+    parser.add_argument("--no-redact", action="store_true", help="Store credentials in clear text in history (unsafe)")
     parser.add_argument("--fail", action="store_true", help="Exit 22 on HTTP status >= 400 (like curl --fail)")
     parser.add_argument("--curl-only", action="store_true", help="Print curl command without sending")
     parser.add_argument("--save", action="store_true", help="Save to history even with --curl-only")
@@ -54,16 +55,19 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
-    subparsers.add_parser("history", help="List request history")
+    history_p = subparsers.add_parser("history", help="List request history")
+    history_p.add_argument("--reveal", action="store_true", help="Resolve {{VAR}} secret references")
 
     replay_p = subparsers.add_parser("replay", help="Replay a history entry by ID")
     replay_p.add_argument("id", type=int, help="History entry ID")
 
     curl_p = subparsers.add_parser("curl", help="Print curl command for a history entry")
     curl_p.add_argument("id", type=int, help="History entry ID")
+    curl_p.add_argument("--reveal", action="store_true", help="Resolve {{VAR}} secret references")
 
     export_p = subparsers.add_parser("export-history", help="Export history to JSON")
     export_p.add_argument("-o", "--output", default="history.json", metavar="PATH", help="Output JSON file path")
+    export_p.add_argument("--reveal", action="store_true", help="Resolve {{VAR}} secret references")
 
     delete_p = subparsers.add_parser("delete-history", help="Delete a history entry by ID")
     delete_p.add_argument("id", type=int, help="History entry ID")
