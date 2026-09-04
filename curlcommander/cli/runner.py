@@ -27,6 +27,7 @@ from curlcommander.core.curl_parser import CurlParseError, parse_curl
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send, stream_send
+from curlcommander.core import payloads
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
 from curlcommander.core.raw_http import RawRequestError, parse_raw_request
 from curlcommander.core.raw_transport import (
@@ -206,8 +207,8 @@ def _run_request(args, repo: HistoryRepo) -> int:
     if getattr(args, "stream", False):
         return _run_stream(config)
 
-    # Fuzzing (2B.3): a wordlist plus FUZZ markers in the request.
-    if getattr(args, "wordlists", None):
+    # Fuzzing (2B.3): a wordlist / built-in payload set plus FUZZ markers.
+    if getattr(args, "wordlists", None) or getattr(args, "payloads", None):
         return _run_fuzz(config, args)
 
     if args.curl_only:
@@ -277,9 +278,15 @@ def _run_stream(config: RequestConfig) -> int:
 
 
 def _run_fuzz(config: RequestConfig, args) -> int:
-    wordlists = [_load_wordlist(p) for p in args.wordlists]
-    if any(not wl for wl in wordlists):
-        _console.print("[red]Error:[/red] a wordlist is empty or unreadable.")
+    wordlists = [_load_wordlist(p) for p in getattr(args, "wordlists", [])]
+    for name in getattr(args, "payloads", []) or []:
+        try:
+            wordlists.append(payloads.load(name))
+        except KeyError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+    if not wordlists or any(not wl for wl in wordlists):
+        _console.print("[red]Error:[/red] a wordlist/payload set is empty or unreadable.")
         return EXIT_USAGE
 
     markers = markers_for(len(wordlists))

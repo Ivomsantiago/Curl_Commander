@@ -48,6 +48,7 @@ def build_request_parser() -> argparse.ArgumentParser:
 
     fuzz = parser.add_argument_group("fuzzing")
     fuzz.add_argument("-w", "--wordlist", action="append", dest="wordlists", default=[], metavar="PATH", help="Wordlist for FUZZ markers (repeatable)")
+    fuzz.add_argument("--payloads", action="append", dest="payloads", default=[], metavar="NAME", help="Built-in payload set (sqli/xss/ssti/traversal/cmdi)")
     fuzz.add_argument("--fuzz-mode", choices=["clusterbomb", "pitchfork"], default="clusterbomb", help="Multi-wordlist mode")
     fuzz.add_argument("--encode", metavar="LIST", help="Encoder chain applied to payloads (e.g. url,base64)")
     fuzz.add_argument("--concurrency", type=int, default=10, metavar="N", help="Concurrent fuzz requests")
