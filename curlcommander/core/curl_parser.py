@@ -166,12 +166,14 @@ def parse_curl(command: str) -> RequestConfig:
             params.append(k, v)
         url = urlunsplit((split.scheme, split.netloc, split.path, "", split.fragment))
 
+    form = HeaderList()
+    for spec in forms:
+        name, _, value = spec.partition("=")
+        form.append(name.strip(), value)
+
     body = ""
     body_type = "none"
-    if forms:
-        body = "&".join(forms)  # placeholder; multipart handled by uploader
-        body_type = "form"
-    elif data_parts:
+    if data_parts:
         body = "&".join(data_parts) if (data_urlencode or force_get) else "".join(data_parts)
         body_type = "raw"
         if force_get:
@@ -180,13 +182,15 @@ def parse_curl(command: str) -> RequestConfig:
             body, body_type = "", "none"
 
     if method is None:
-        method = "GET" if (body_type == "none" or force_get) else "POST"
+        has_payload = (body_type != "none" or len(form) > 0) and not force_get
+        method = "POST" if has_payload else "GET"
 
     return RequestConfig(
         method=method.upper(),
         url=url,
         headers=headers,
         params=params,
+        form=form,
         body=body,
         body_type=body_type,
         auth_type=auth_type,

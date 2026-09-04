@@ -119,6 +119,11 @@ def redact_config(config: RequestConfig, env_vars: dict[str, str] | None = None)
 
     clone.headers = redact_headers(config.headers, reverse_env)
 
+    # Cookie values are session credentials -> always mask (keep the name).
+    clone.cookies = HeaderList(
+        [(k, _mask_value(v, reverse_env)) for k, v in config.cookies]
+    )
+
     if config.auth_type in {"bearer", "basic"} and config.auth_value:
         ref = _referenceize(config.auth_value, reverse_env)
         # Keep the value only if it is now entirely {{VAR}} references.
@@ -153,6 +158,7 @@ def reveal_config(config: RequestConfig, env: dict[str, str]) -> RequestConfig:
     clone.proxy = reveal_text(config.proxy, env)
     clone.headers = HeaderList([(k, reveal_text(v, env)) for k, v in config.headers])
     clone.params = HeaderList([(k, reveal_text(v, env)) for k, v in config.params])
+    clone.cookies = HeaderList([(k, reveal_text(v, env)) for k, v in config.cookies])
     return clone
 
 
@@ -161,4 +167,5 @@ def has_redacted(config: RequestConfig) -> bool:
     fields = [config.auth_value, config.proxy, config.url, config.body]
     fields += [v for _, v in config.headers]
     fields += [v for _, v in config.params]
+    fields += [v for _, v in config.cookies]
     return any(REDACTED in (f or "") for f in fields)

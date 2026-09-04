@@ -270,6 +270,16 @@ def _build_config(args, env_vars: dict[str, str] | None = None) -> RequestConfig
     elif args.auth_apikey:
         auth_type, auth_value = "apikey", args.auth_apikey
 
+    cookies = HeaderList()
+    for c in getattr(args, "cookies", []) or []:
+        k, _, v = c.partition("=")
+        cookies.append(k.strip(), v)
+
+    form = HeaderList()
+    for f in getattr(args, "form", []) or []:
+        name, _, spec = f.partition("=")
+        form.append(name.strip(), spec)
+
     url = _substitute_variables(args.url or "", env_vars)
     headers = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in headers])
     params = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in params])
@@ -281,6 +291,10 @@ def _build_config(args, env_vars: dict[str, str] | None = None) -> RequestConfig
         url=url,
         headers=headers,
         params=params,
+        cookies=cookies,
+        form=form,
+        cookie_jar=getattr(args, "cookie_jar", None) or "",
+        session=getattr(args, "session", None) or "",
         body=body,
         body_type=body_type,
         auth_type=auth_type,

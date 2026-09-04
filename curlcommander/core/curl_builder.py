@@ -71,7 +71,17 @@ def build_curl(config: RequestConfig) -> str:
     for key, value in effective_headers:
         parts += ["-H", f"{key}: {value}"]
 
-    if resolved.body:
+    if resolved.cookies:
+        parts += ["-b", "; ".join(f"{k}={v}" for k, v in resolved.cookies)]
+
+    jar = resolved.cookie_jar
+    if jar:
+        parts += ["-b", jar, "-c", jar]
+
+    for name, spec in resolved.form:
+        parts += ["-F", f"{name}={spec}"]
+
+    if resolved.body and not resolved.form:
         parts += ["--data-raw", resolved.body]
 
     if resolved.output_path:

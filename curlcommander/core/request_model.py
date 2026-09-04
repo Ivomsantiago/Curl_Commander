@@ -6,7 +6,7 @@ from typing import Any
 from curlcommander.core.headers import HeaderList, coerce
 
 # Field names whose values are HeaderList instances (ordered/duplicate pairs).
-_PAIR_FIELDS = frozenset({"headers", "params"})
+_PAIR_FIELDS = frozenset({"headers", "params", "cookies", "form"})
 
 
 @dataclass
@@ -15,6 +15,10 @@ class RequestConfig:
     url: str
     headers: HeaderList = field(default_factory=HeaderList)
     params: HeaderList = field(default_factory=HeaderList)
+    cookies: HeaderList = field(default_factory=HeaderList)
+    form: HeaderList = field(default_factory=HeaderList)  # multipart name -> spec
+    cookie_jar: str = ""
+    session: str = ""
     body: str = ""
     body_type: str = "none"   # "json" | "form" | "raw" | "none"
     auth_type: str = "none"   # "none" | "bearer" | "basic" | "apikey"
@@ -36,6 +40,8 @@ class RequestConfig:
         # Accept dict / list-of-pairs / HeaderList for ergonomics and back-compat.
         self.headers = coerce(self.headers)
         self.params = coerce(self.params)
+        self.cookies = coerce(self.cookies)
+        self.form = coerce(self.form)
 
     # -- serialization ------------------------------------------------------
 
