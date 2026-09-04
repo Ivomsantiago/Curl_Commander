@@ -10,6 +10,7 @@ from rich.text import Text
 
 from curlcommander.config import DB_PATH
 from curlcommander.core.curl_builder import build_curl
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.core.response_formatter import format_body, get_lexer
@@ -160,17 +161,17 @@ def _execute_request(config: RequestConfig, repo: HistoryRepo) -> None:
 # ---------------------------------------------------------------------------
 
 def _build_config(args) -> RequestConfig:
-    headers: dict[str, str] = {}
+    headers = HeaderList()
     for h in args.headers:
         if ": " in h:
             k, v = h.split(": ", 1)
-            headers[k.strip()] = v.strip()
+            headers.append(k.strip(), v.strip())
 
-    params: dict[str, str] = {}
+    params = HeaderList()
     for p in args.params:
         if "=" in p:
             k, v = p.split("=", 1)
-            params[k.strip()] = v.strip()
+            params.append(k.strip(), v.strip())
 
     body = ""
     body_type = "none"
@@ -194,8 +195,8 @@ def _build_config(args) -> RequestConfig:
 
     env_vars = _load_env_file(args.env_file) if args.env_file else {}
     url = _substitute_variables(args.url or "", env_vars)
-    headers = {k: _substitute_variables(v, env_vars) for k, v in headers.items()}
-    params = {k: _substitute_variables(v, env_vars) for k, v in params.items()}
+    headers = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in headers])
+    params = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in params])
     body = _substitute_variables(body, env_vars)
 
     return RequestConfig(

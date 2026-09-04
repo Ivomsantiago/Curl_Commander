@@ -1,9 +1,9 @@
 import json
 import sqlite3
-from dataclasses import asdict
 from pathlib import Path
 
 from curlcommander.config import DB_PATH, HISTORY_LIMIT
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.storage.db import init_schema, open_connection
 
@@ -27,8 +27,8 @@ class HistoryRepo:
                 entry.timestamp,
                 entry.request.method,
                 entry.request.url,
-                json.dumps(entry.request.headers),
-                json.dumps(entry.request.params),
+                json.dumps(entry.request.headers.to_jsonable()),
+                json.dumps(entry.request.params.to_jsonable()),
                 entry.request.body,
                 entry.request.body_type,
                 entry.request.auth_type,
@@ -62,17 +62,28 @@ class HistoryRepo:
 
     def export_json(self, output_path: str | Path) -> None:
         rows = self._conn.execute("SELECT * FROM history ORDER BY id DESC").fetchall()
-        entries = [asdict(self._row_to_entry(row)) for row in rows]
+        entries = [self._entry_to_jsonable(self._row_to_entry(row)) for row in rows]
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+
+    @staticmethod
+    def _entry_to_jsonable(entry: HistoryEntry) -> dict:
+        return {
+            "id": entry.id,
+            "timestamp": entry.timestamp,
+            "request": entry.request.to_dict(),
+            "status_code": entry.status_code,
+            "duration_ms": entry.duration_ms,
+            "curl_cmd": entry.curl_cmd,
+        }
 
     def _row_to_entry(self, row: sqlite3.Row) -> HistoryEntry:
         request = RequestConfig(
             method=row["method"],
             url=row["url"],
-            headers=json.loads(row["headers"] or "{}"),
-            params=json.loads(row["params"] or "{}"),
+            headers=HeaderList.from_jsonable(json.loads(row["headers"] or "[]")),
+            params=HeaderList.from_jsonable(json.loads(row["params"] or "[]")),
             body=row["body"] or "",
             body_type=row["body_type"] or "none",
             auth_type=row["auth_type"] or "none",

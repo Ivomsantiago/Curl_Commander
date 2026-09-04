@@ -45,8 +45,8 @@ async def send(config: RequestConfig) -> ResponseResult:
                 response = await client.request(
                     method=resolved.method,
                     url=resolved.url,
-                    headers=resolved.headers,
-                    params=resolved.params,
+                    headers=resolved.headers.as_tuples(),
+                    params=resolved.params.as_tuples(),
                     content=content,
                     auth=auth,
                 )

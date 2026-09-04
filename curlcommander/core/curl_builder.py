@@ -1,15 +1,22 @@
 import shlex
-from urllib.parse import urlencode
+from urllib.parse import quote_plus
 
 from curlcommander.core.auth_handler import resolve_auth
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.request_model import RequestConfig
+
+
+def _encode_params(params: HeaderList) -> str:
+    """Encode query pairs preserving order and duplicates (for HPP)."""
+    return "&".join(f"{quote_plus(k)}={quote_plus(v)}" for k, v in params)
 
 
 def build_curl(config: RequestConfig) -> str:
     """Generate a curl command string from a RequestConfig.
 
     Always includes -L -s -i. Uses shlex.quote on all parts for safe escaping.
-    Auth is resolved into headers before building. URL goes last.
+    Auth is resolved into headers before building. URL goes last. Header and
+    param order and duplicates are preserved exactly.
     """
     resolved = resolve_auth(config)
 
@@ -34,13 +41,13 @@ def build_curl(config: RequestConfig) -> str:
 
     parts += ["-X", resolved.method]
 
-    effective_headers = dict(resolved.headers)
-    if resolved.body_type == "json" and "Content-Type" not in effective_headers:
-        effective_headers["Content-Type"] = "application/json"
-    elif resolved.body_type == "form" and "Content-Type" not in effective_headers:
-        effective_headers["Content-Type"] = "application/x-www-form-urlencoded"
+    effective_headers = HeaderList(resolved.headers)
+    if resolved.body_type == "json":
+        effective_headers.setdefault("Content-Type", "application/json")
+    elif resolved.body_type == "form":
+        effective_headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
 
-    for key, value in effective_headers.items():
+    for key, value in effective_headers:
         parts += ["-H", f"{key}: {value}"]
 
     if resolved.body:
@@ -52,7 +59,7 @@ def build_curl(config: RequestConfig) -> str:
     url = resolved.url
     if resolved.params:
         separator = "&" if "?" in url else "?"
-        url = f"{url}{separator}{urlencode(resolved.params)}"
+        url = f"{url}{separator}{_encode_params(resolved.params)}"
 
     parts.append(url)
 

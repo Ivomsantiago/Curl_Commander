@@ -3,6 +3,7 @@ from prompt_toolkit.completion import WordCompleter
 from rich.console import Console
 
 from curlcommander.config import AUTH_TYPES, BODY_TYPES, HTTP_METHODS
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.request_model import RequestConfig
 
 _console = Console(stderr=True)
@@ -25,26 +26,26 @@ def run_wizard() -> RequestConfig | None:
             return None
 
         _console.print("\n[dim]Headers — format 'Key: Value', blank line to finish[/dim]")
-        headers: dict[str, str] = {}
+        headers = HeaderList()
         while True:
             line = prompt("  Header: ").strip()
             if not line:
                 break
-            if ": " in line:
-                k, v = line.split(": ", 1)
-                headers[k.strip()] = v.strip()
+            if ":" in line:
+                k, v = line.split(":", 1)
+                headers.append(k.strip(), v.strip())
             else:
                 _console.print("[yellow]  Use format 'Key: Value'[/yellow]")
 
         _console.print("\n[dim]Query params — format 'key=value', blank line to finish[/dim]")
-        params: dict[str, str] = {}
+        params = HeaderList()
         while True:
             line = prompt("  Param: ").strip()
             if not line:
                 break
             if "=" in line:
                 k, v = line.split("=", 1)
-                params[k.strip()] = v.strip()
+                params.append(k.strip(), v.strip())
             else:
                 _console.print("[yellow]  Use format 'key=value'[/yellow]")
 

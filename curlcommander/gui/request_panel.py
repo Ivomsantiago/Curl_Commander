@@ -5,6 +5,7 @@ from textual.widget import Widget
 from textual.widgets import Button, Input, Label, Select, TextArea
 
 from curlcommander.config import AUTH_TYPES, BODY_TYPES, HTTP_METHODS
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.request_model import RequestConfig
 
 
@@ -138,19 +139,19 @@ class RequestPanel(Widget):
         method = self._select_value("method-select", "GET")
         url = self.query_one("#url-input", Input).value
 
-        headers: dict[str, str] = {}
+        headers = HeaderList()
         for line in self.query_one("#headers-area", TextArea).text.splitlines():
             line = line.strip()
-            if ": " in line:
-                k, v = line.split(": ", 1)
-                headers[k.strip()] = v.strip()
+            if ":" in line:
+                k, v = line.split(":", 1)
+                headers.append(k.strip(), v.strip())
 
-        params: dict[str, str] = {}
+        params = HeaderList()
         for line in self.query_one("#params-area", TextArea).text.splitlines():
             line = line.strip()
             if "=" in line:
                 k, v = line.split("=", 1)
-                params[k.strip()] = v.strip()
+                params.append(k.strip(), v.strip())
 
         body_type = self._select_value("body-type-select", "none")
         body = self.query_one("#body-area", TextArea).text
