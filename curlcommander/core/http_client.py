@@ -1,5 +1,6 @@
 import asyncio
 import time
+from collections.abc import Callable
 
 import httpx
 
@@ -10,7 +11,7 @@ from curlcommander.core.request_model import RequestConfig, ResponseResult
 from curlcommander.core.response_formatter import decode_body
 
 
-async def stream_send(config: RequestConfig, on_line):
+async def stream_send(config: RequestConfig, on_line: Callable[[str], None]) -> ResponseResult:
     """Stream a response line by line (NDJSON/SSE) without buffering it all.
 
     Calls ``on_line(str)`` for each decoded line as it arrives. Returns a
@@ -28,9 +29,10 @@ async def stream_send(config: RequestConfig, on_line):
             proxy=proxy,
         ) as client:
             async with client.stream(
-                resolved.method, resolved.url,
+                resolved.method,
+                resolved.url,
                 headers=resolved.headers.as_tuples(),
-                params=resolved.params.as_tuples(),
+                params=resolved.params.as_tuples(),  # type: ignore[arg-type]
                 content=resolved.body.encode() if resolved.body else None,
             ) as response:
                 count = 0
@@ -69,7 +71,7 @@ async def send(config: RequestConfig) -> ResponseResult:
 
     # Multipart upload takes precedence over a raw body when -F specs exist.
     multipart_data: dict[str, str] | None = None
-    multipart_files: list | None = None
+    multipart_files: list[tuple[str, tuple[str, bytes, str]]] | None = None
     if resolved.form:
         multipart_data, multipart_files = build_multipart(resolved.form)
 
@@ -115,7 +117,7 @@ async def send(config: RequestConfig) -> ResponseResult:
                     method=resolved.method,
                     url=resolved.url,
                     headers=resolved.headers.as_tuples(),
-                    params=resolved.params.as_tuples(),
+                    params=resolved.params.as_tuples(),  # type: ignore[arg-type]
                     content=content,
                     data=multipart_data,
                     files=multipart_files,

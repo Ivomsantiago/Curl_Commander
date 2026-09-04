@@ -99,7 +99,7 @@ def send_raw(
         while True:
             try:
                 chunk = sock.recv(65536)
-            except socket.timeout:
+            except TimeoutError:
                 break
             if not chunk:
                 break

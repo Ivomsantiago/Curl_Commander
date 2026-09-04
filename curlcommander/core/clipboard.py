@@ -19,7 +19,7 @@ def read_clipboard() -> str:
     try:
         import pyperclip  # type: ignore
 
-        return pyperclip.paste()
+        return str(pyperclip.paste())
     except Exception:
         pass
 
@@ -38,9 +38,7 @@ def read_clipboard() -> str:
             except subprocess.SubprocessError:
                 continue
 
-    raise ClipboardError(
-        "no clipboard tool available (install pyperclip, or xclip/xsel/wl-paste on Linux)"
-    )
+    raise ClipboardError("no clipboard tool available (install pyperclip, or xclip/xsel/wl-paste on Linux)")
 
 
 def write_clipboard(text: str) -> None:

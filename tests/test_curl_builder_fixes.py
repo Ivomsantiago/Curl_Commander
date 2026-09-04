@@ -17,6 +17,7 @@ def _parts(cmd: str) -> list[str]:
 
 # --- 1.1 basic auth must appear in the generated curl ---------------------
 
+
 def test_basic_auth_emits_dash_u():
     cfg = RequestConfig(method="POST", url="https://x/y", auth_type="basic", auth_value="admin:s3cr3t")
     parts = _parts(build_curl(cfg))
@@ -56,6 +57,7 @@ async def test_curl_reproduces_request_for_all_auth_types():
 
 # --- 1.2 -L must be conditional on follow_redirects -----------------------
 
+
 def test_no_redirect_omits_dash_L():
     cfg = RequestConfig(method="GET", url="https://x", follow_redirects=False)
     assert "-L" not in _parts(build_curl(cfg))
@@ -67,6 +69,7 @@ def test_redirect_default_includes_dash_L():
 
 
 # --- 1.3 timeout must show up as --max-time -------------------------------
+
 
 def test_custom_timeout_emits_max_time():
     cfg = RequestConfig(method="GET", url="https://x", timeout=5.0)

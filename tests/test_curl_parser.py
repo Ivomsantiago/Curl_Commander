@@ -4,7 +4,6 @@ import pytest
 
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
-from curlcommander.core.headers import HeaderList
 from curlcommander.core.raw_http import RawRequestError, parse_raw_request
 from curlcommander.core.request_model import RequestConfig
 
@@ -13,7 +12,7 @@ def test_import_devtools_style():
     cmd = (
         "curl 'https://api.x/y?a=1&a=2' -X POST "
         "-H 'Content-Type: application/json' -H 'Cookie: s=1' "
-        "--data-raw '{\"k\":\"v\"}'"
+        '--data-raw \'{"k":"v"}\''
     )
     cfg = parse_curl(cmd)
     assert cfg.method == "POST"
@@ -43,7 +42,7 @@ def test_import_line_continuations_and_useragent_referer():
 
 
 def test_import_windows_caret_continuation():
-    cmd = "curl https://x/y ^\n -H \"Accept: application/json\""
+    cmd = 'curl https://x/y ^\n -H "Accept: application/json"'
     cfg = parse_curl(cmd)
     assert cfg.headers.get("Accept") == "application/json"
 
@@ -57,13 +56,22 @@ def _cfgs():
     return [
         RequestConfig(method="GET", url="https://x/y"),
         RequestConfig(
-            method="POST", url="https://api.x/z",
+            method="POST",
+            url="https://api.x/z",
             headers=[("X-A", "1"), ("X-A", "2"), ("Accept", "application/json")],
             params=[("id", "1"), ("id", "2")],
-            body='{"n":1}', body_type="json",
+            body='{"n":1}',
+            body_type="json",
         ),
-        RequestConfig(method="PUT", url="https://x/y", verify_ssl=False, follow_redirects=True,
-                      compressed=True, timeout=12.0, proxy="http://127.0.0.1:8080"),
+        RequestConfig(
+            method="PUT",
+            url="https://x/y",
+            verify_ssl=False,
+            follow_redirects=True,
+            compressed=True,
+            timeout=12.0,
+            proxy="http://127.0.0.1:8080",
+        ),
         RequestConfig(method="POST", url="https://x/y", auth_type="basic", auth_value="user:pass"),
     ]
 
@@ -85,8 +93,9 @@ def test_round_trip_parse_of_build(cfg):
 
 # --- 2.2 raw HTTP ---------------------------------------------------------
 
+
 def test_raw_request_with_host_header():
-    raw = "POST /login HTTP/1.1\r\nHost: target.com\r\nContent-Type: application/json\r\n\r\n{\"u\":\"a\"}"
+    raw = 'POST /login HTTP/1.1\r\nHost: target.com\r\nContent-Type: application/json\r\n\r\n{"u":"a"}'
     cfg = parse_raw_request(raw)
     assert cfg.method == "POST"
     assert cfg.url == "https://target.com/login"

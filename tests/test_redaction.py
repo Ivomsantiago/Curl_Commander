@@ -1,19 +1,16 @@
 """Regression tests for Phase 1.4/1.5 — secret redaction and lossless replay."""
 
-import json
-import sqlite3
 import types
 
 import httpx
-import pytest
 import respx
 
 from curlcommander.cli import runner
 from curlcommander.core.redaction import REDACTED, redact_config, reveal_config
 from curlcommander.core.request_model import RequestConfig
 
-
 # --- unit: redact_config --------------------------------------------------
+
 
 def test_bearer_without_env_is_redacted():
     cfg = RequestConfig(method="GET", url="https://x", auth_type="bearer", auth_value="s3cr3t-token")
@@ -36,7 +33,8 @@ def test_apikey_keeps_header_name_masks_value():
 
 def test_sensitive_headers_masked_others_untouched():
     cfg = RequestConfig(
-        method="GET", url="https://x",
+        method="GET",
+        url="https://x",
         headers=[("Authorization", "Bearer tok"), ("Cookie", "sid=deadbeef"), ("Accept", "application/json")],
     )
     red = redact_config(cfg, {})
@@ -62,14 +60,38 @@ def test_reveal_round_trip():
 
 # --- integration: nothing secret reaches disk -----------------------------
 
+
 def _args(**over):
     base = dict(
-        subcommand=None, url="https://api/me", method="GET", headers=[], params=[],
-        body="", body_file=None, json_body=None, form_body=None,
-        auth_bearer=None, auth_basic=None, auth_apikey=None, proxy=None,
-        retry=0, retry_delay=0.0, compressed=False, http2=False, output="",
-        pretty=False, raw=False, env_file=None, no_redirect=False, no_verify=False,
-        timeout=30.0, fail=False, no_redact=False, curl_only=False, save=False, gui=False,
+        subcommand=None,
+        url="https://api/me",
+        method="GET",
+        headers=[],
+        params=[],
+        body="",
+        body_file=None,
+        json_body=None,
+        form_body=None,
+        auth_bearer=None,
+        auth_basic=None,
+        auth_apikey=None,
+        proxy=None,
+        retry=0,
+        retry_delay=0.0,
+        compressed=False,
+        http2=False,
+        output="",
+        pretty=False,
+        raw=False,
+        env_file=None,
+        no_redirect=False,
+        no_verify=False,
+        timeout=30.0,
+        fail=False,
+        no_redact=False,
+        curl_only=False,
+        save=False,
+        gui=False,
     )
     base.update(over)
     return types.SimpleNamespace(**base)

@@ -25,9 +25,9 @@ class AssertionResult:
 @dataclass
 class AssertionSpec:
     status: int | None = None
-    headers: list[str] | None = None            # "Name: Value"
+    headers: list[str] | None = None  # "Name: Value"
     body_contains: list[str] | None = None
-    jsonpaths: list[str] | None = None          # "$.a.b == 1"
+    jsonpaths: list[str] | None = None  # "$.a.b == 1"
     max_ms: float | None = None
 
     def is_empty(self) -> bool:
@@ -104,14 +104,18 @@ def eval_jsonpath(body: str, expr: str) -> AssertionResult:
 
 # --- assertion evaluation -------------------------------------------------
 
+
 def run_assertions(result: ResponseResult, spec: AssertionSpec) -> list[AssertionResult]:
     out: list[AssertionResult] = []
 
     if spec.status is not None:
-        out.append(AssertionResult(
-            f"status == {spec.status}", result.status_code == spec.status,
-            f"got {result.status_code}",
-        ))
+        out.append(
+            AssertionResult(
+                f"status == {spec.status}",
+                result.status_code == spec.status,
+                f"got {result.status_code}",
+            )
+        )
 
     for h in spec.headers or []:
         name, _, expected = h.partition(":")
@@ -129,15 +133,19 @@ def run_assertions(result: ResponseResult, spec: AssertionSpec) -> list[Assertio
         out.append(eval_jsonpath(result.body, expr))
 
     if spec.max_ms is not None:
-        out.append(AssertionResult(
-            f"time <= {spec.max_ms:.0f}ms", result.duration_ms <= spec.max_ms,
-            f"took {result.duration_ms:.0f}ms",
-        ))
+        out.append(
+            AssertionResult(
+                f"time <= {spec.max_ms:.0f}ms",
+                result.duration_ms <= spec.max_ms,
+                f"took {result.duration_ms:.0f}ms",
+            )
+        )
 
     return out
 
 
 # --- reporting ------------------------------------------------------------
+
 
 def format_report(results: list[AssertionResult], fmt: str, url: str = "") -> str:
     if fmt == "json":
@@ -153,8 +161,8 @@ def format_report(results: list[AssertionResult], fmt: str, url: str = "") -> st
         failures = sum(1 for r in results if not r.passed)
         cases = []
         for r in results:
-            body = "" if r.passed else f'<failure message={sax.quoteattr(r.detail)}></failure>'
-            cases.append(f'    <testcase name={sax.quoteattr(r.name)}>{body}</testcase>')
+            body = "" if r.passed else f"<failure message={sax.quoteattr(r.detail)}></failure>"
+            cases.append(f"    <testcase name={sax.quoteattr(r.name)}>{body}</testcase>")
         cases_xml = "\n".join(cases)
         return (
             '<?xml version="1.0" encoding="UTF-8"?>\n'

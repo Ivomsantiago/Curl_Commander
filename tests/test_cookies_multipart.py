@@ -3,16 +3,15 @@
 import httpx
 import respx
 
-from curlcommander.core.cookies import load_jar, save_jar
+from curlcommander.core.cookies import load_jar
 from curlcommander.core.curl_builder import build_curl
-from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
-from curlcommander.core.multipart import build_multipart, parse_form_field
+from curlcommander.core.multipart import parse_form_field
 from curlcommander.core.redaction import REDACTED, redact_config
 from curlcommander.core.request_model import RequestConfig
 
-
 # --- 2.3 cookies ----------------------------------------------------------
+
 
 @respx.mock
 async def test_explicit_cookies_are_sent():
@@ -49,6 +48,7 @@ def test_cookies_are_redacted():
 
 # --- 2.4 multipart --------------------------------------------------------
 
+
 def test_parse_form_data_field():
     assert parse_form_field("user", "ada") == ("data", "ada")
 
@@ -68,7 +68,8 @@ async def test_multipart_upload_sent(tmp_path):
     f.write_bytes(b"\x00\x01\x02")
     route = respx.post("https://x/upload").mock(return_value=httpx.Response(200, text="ok"))
     cfg = RequestConfig(
-        method="POST", url="https://x/upload",
+        method="POST",
+        url="https://x/upload",
         form=[("field", "value"), ("file", f"@{f};filename=payload.bin")],
     )
     await send(cfg)
@@ -80,6 +81,7 @@ async def test_multipart_upload_sent(tmp_path):
 
 def test_curl_builder_emits_form():
     import shlex
+
     cfg = RequestConfig(method="POST", url="https://x", form=[("f", "@/tmp/x.png")])
     parts = shlex.split(build_curl(cfg))
     assert "-F" in parts and parts[parts.index("-F") + 1] == "f=@/tmp/x.png"

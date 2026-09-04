@@ -6,9 +6,8 @@ import respx
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
-from curlcommander.core.request_model import RequestConfig
+from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.storage.history_repo import HistoryRepo
-from curlcommander.core.request_model import HistoryEntry
 
 
 def test_headerlist_preserves_order_case_and_duplicates():

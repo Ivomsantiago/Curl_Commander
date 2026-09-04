@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from curlcommander.core.request_model import RequestConfig, ResponseResult
@@ -32,7 +32,7 @@ def save_evidence(
     from urllib.parse import urlsplit
 
     host = urlsplit(config.url if "://" in config.url else "https://" + config.url).hostname or "target"
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     folder = Path(out_dir) / f"{ts}_{_slug(host)}_{config.method}"
     folder.mkdir(parents=True, exist_ok=True)
 

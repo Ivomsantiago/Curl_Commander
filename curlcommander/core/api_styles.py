@@ -14,8 +14,7 @@ from curlcommander.core.request_model import RequestConfig
 
 # Standard GraphQL introspection query (trimmed to schema/type names).
 INTROSPECTION_QUERY = (
-    "query IntrospectionQuery { __schema { queryType { name } mutationType { name } "
-    "types { name kind } } }"
+    "query IntrospectionQuery { __schema { queryType { name } mutationType { name } types { name kind } } }"
 )
 
 

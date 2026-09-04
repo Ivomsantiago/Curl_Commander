@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
-from curlcommander.storage.db import BASE_SCHEMA, init_schema, open_connection
+from curlcommander.storage.db import BASE_SCHEMA
 from curlcommander.storage.history_repo import HistoryRepo
 
 
@@ -52,8 +52,12 @@ def test_db_and_dir_permissions(tmp_path):
     db = appdir / "history.db"
     repo = HistoryRepo(db_path=str(db))
     entry = HistoryEntry(
-        id=0, timestamp="t", request=RequestConfig(method="GET", url="https://x"),
-        status_code=200, duration_ms=1.0, curl_cmd="",
+        id=0,
+        timestamp="t",
+        request=RequestConfig(method="GET", url="https://x"),
+        status_code=200,
+        duration_ms=1.0,
+        curl_cmd="",
     )
     repo.save(entry)
     repo.close()

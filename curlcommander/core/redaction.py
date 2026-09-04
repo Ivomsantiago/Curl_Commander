@@ -120,9 +120,7 @@ def redact_config(config: RequestConfig, env_vars: dict[str, str] | None = None)
     clone.headers = redact_headers(config.headers, reverse_env)
 
     # Cookie values are session credentials -> always mask (keep the name).
-    clone.cookies = HeaderList(
-        [(k, _mask_value(v, reverse_env)) for k, v in config.cookies]
-    )
+    clone.cookies = HeaderList([(k, _mask_value(v, reverse_env)) for k, v in config.cookies])
 
     if config.auth_type in {"bearer", "basic"} and config.auth_value:
         ref = _referenceize(config.auth_value, reverse_env)
@@ -142,6 +140,7 @@ def redact_config(config: RequestConfig, env_vars: dict[str, str] | None = None)
 
 def reveal_text(text: str, env: dict[str, str]) -> str:
     """Resolve ``{{VAR}}`` references from *env* (used by --reveal)."""
+
     def repl(match: re.Match[str]) -> str:
         name = match.group(0).strip("{} \t")
         return env.get(name, match.group(0))

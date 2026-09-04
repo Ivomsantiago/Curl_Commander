@@ -14,8 +14,8 @@ from curlcommander.core.fuzzer import (
 )
 from curlcommander.core.request_model import RequestConfig
 
-
 # --- encoders -------------------------------------------------------------
+
 
 def test_encoders_available():
     assert {"url", "double-url", "base64", "hex", "html-entity", "unicode"} <= set(available())
@@ -35,6 +35,7 @@ def test_encoder_unknown_raises():
 
 # --- marker handling ------------------------------------------------------
 
+
 def test_markers_and_find():
     assert markers_for(1) == ["FUZZ"]
     assert markers_for(2) == ["FUZZ1", "FUZZ2"]
@@ -44,8 +45,11 @@ def test_markers_and_find():
 
 def test_substitute_replaces_everywhere():
     cfg = RequestConfig(
-        method="GET", url="https://x/FUZZ", headers=[("H", "FUZZ")],
-        params=[("p", "FUZZ")], body="FUZZ",
+        method="GET",
+        url="https://x/FUZZ",
+        headers=[("H", "FUZZ")],
+        params=[("p", "FUZZ")],
+        body="FUZZ",
     )
     out = substitute(cfg, {"FUZZ": "PWN"})
     assert out.url == "https://x/PWN"
@@ -55,6 +59,7 @@ def test_substitute_replaces_everywhere():
 
 
 # --- engine ---------------------------------------------------------------
+
 
 @respx.mock
 async def test_fuzz_runs_all_payloads_and_flags_anomaly():

@@ -17,8 +17,7 @@ def run_wizard() -> RequestConfig | None:
 
     try:
         method = (
-            prompt("Method [GET]: ", completer=WordCompleter(HTTP_METHODS, ignore_case=True)).strip().upper()
-            or "GET"
+            prompt("Method [GET]: ", completer=WordCompleter(HTTP_METHODS, ignore_case=True)).strip().upper() or "GET"
         )
 
         url = prompt("URL: ").strip()

@@ -8,7 +8,6 @@ base64. New encoders register with @encoder without touching call sites.
 from __future__ import annotations
 
 import base64 as _b64
-import html
 from collections.abc import Callable
 from urllib.parse import quote
 
@@ -20,6 +19,7 @@ def encoder(name: str) -> Callable[[Encoder], Encoder]:
     def register(fn: Encoder) -> Encoder:
         _REGISTRY[name] = fn
         return fn
+
     return register
 
 

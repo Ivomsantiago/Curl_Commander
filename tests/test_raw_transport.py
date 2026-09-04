@@ -4,7 +4,6 @@ import socket
 import threading
 
 import httpx
-import pytest
 import respx
 
 from curlcommander.core.http_client import send
@@ -42,7 +41,7 @@ class _RecordingServer:
                     if not chunk:
                         break
                     data += chunk
-            except socket.timeout:
+            except TimeoutError:
                 pass
             self.received = data
             conn.sendall(_RESPONSE)
@@ -59,7 +58,8 @@ def test_serialize_preserves_unnormalized_path():
 
 def test_serialize_preserves_duplicate_headers_order_case():
     cfg = RequestConfig(
-        method="GET", url="http://target/x",
+        method="GET",
+        url="http://target/x",
         headers=[("X-Forwarded-For", "1.1.1.1"), ("X-Forwarded-For", "2.2.2.2"), ("host", "evil")],
     )
     raw = serialize_request(cfg).decode()
@@ -86,11 +86,7 @@ def test_manual_cl_te_both_survive():
     """CL.TE smuggling primitive: both headers must reach the wire untouched."""
     server = _RecordingServer()
     try:
-        raw = (
-            b"POST / HTTP/1.1\r\nHost: x\r\n"
-            b"Content-Length: 6\r\nTransfer-Encoding: chunked\r\n\r\n"
-            b"0\r\n\r\nG"
-        )
+        raw = b"POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 6\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nG"
         send_raw_request(raw, server.host, server.port, use_tls=False, timeout=2.0)
         server.thread.join(timeout=2)
     finally:

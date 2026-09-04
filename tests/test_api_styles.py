@@ -3,7 +3,6 @@
 import json
 
 import httpx
-import pytest
 import respx
 
 from curlcommander.core.api_styles import (

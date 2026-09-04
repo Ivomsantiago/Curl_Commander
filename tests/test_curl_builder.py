@@ -1,7 +1,5 @@
 import shlex
 
-import pytest
-
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.request_model import RequestConfig
 

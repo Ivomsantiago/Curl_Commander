@@ -1,10 +1,10 @@
+import os
+
 from textual.app import ComposeResult
-from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.containers import Horizontal, ScrollableContainer
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Button, Checkbox, Input, Label, Select, TextArea
-
-import os
 
 from curlcommander.config import AUTH_TYPES, BODY_TYPES, HTTP_METHODS
 from curlcommander.core.headers import HeaderList
@@ -152,6 +152,7 @@ class RequestPanel(Widget):
             self.post_message(self.RequestReady(config))
         elif event.button.id == "curl-only-btn":
             from curlcommander.core.curl_builder import build_curl
+
             try:
                 curl_cmd = build_curl(config)
                 self.app.query_one("CurlPanel").update_curl(curl_cmd)  # type: ignore[attr-defined]
@@ -216,12 +217,8 @@ class RequestPanel(Widget):
             self.query_one("#method-select", Select).value = config.method
         self.query_one("#url-input", Input).value = config.url
 
-        self.query_one("#headers-area", TextArea).load_text(
-            "\n".join(f"{k}: {v}" for k, v in config.headers.items())
-        )
-        self.query_one("#params-area", TextArea).load_text(
-            "\n".join(f"{k}={v}" for k, v in config.params.items())
-        )
+        self.query_one("#headers-area", TextArea).load_text("\n".join(f"{k}: {v}" for k, v in config.headers.items()))
+        self.query_one("#params-area", TextArea).load_text("\n".join(f"{k}={v}" for k, v in config.params.items()))
 
         if config.body_type in BODY_TYPES:
             self.query_one("#body-type-select", Select).value = config.body_type

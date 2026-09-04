@@ -27,7 +27,9 @@ def build_request_parser() -> argparse.ArgumentParser:
     api = parser.add_argument_group("API styles")
     api.add_argument("--graphql", metavar="QUERY", help="Send a GraphQL query (POST JSON)")
     api.add_argument("--graphql-vars", metavar="JSON", help="GraphQL variables as JSON")
-    api.add_argument("--graphql-introspection", action="store_true", help="Send introspection query and report if enabled")
+    api.add_argument(
+        "--graphql-introspection", action="store_true", help="Send introspection query and report if enabled"
+    )
     api.add_argument("--xml", metavar="BODY|@FILE", help="Send an XML body (application/xml)")
     api.add_argument("--soap", metavar="BODY|@FILE", help="Send a SOAP/XML body (text/xml)")
     api.add_argument("--soap-action", metavar="URI", help="SOAPAction header value")
@@ -38,7 +40,9 @@ def build_request_parser() -> argparse.ArgumentParser:
     raw = parser.add_argument_group("raw / pentest control")
     raw.add_argument("--raw-request", metavar="PATH", help="Send a raw HTTP block byte-for-byte over a socket")
     raw.add_argument("--raw-path", action="store_true", help="Send the URL path byte-faithful (no normalization)")
-    raw.add_argument("--no-default-headers", action="store_true", help="Do not send httpx default headers (UA/Accept/...)")
+    raw.add_argument(
+        "--no-default-headers", action="store_true", help="Do not send httpx default headers (UA/Accept/...)"
+    )
 
     opsec = parser.add_argument_group("operational safety")
     opsec.add_argument("--scope", metavar="PATH", help="Allowlist of in-scope hosts/CIDRs; refuse out-of-scope targets")
@@ -47,9 +51,26 @@ def build_request_parser() -> argparse.ArgumentParser:
     opsec.add_argument("--engagement", metavar="LABEL", help="Authorization/engagement label for evidence")
 
     fuzz = parser.add_argument_group("fuzzing")
-    fuzz.add_argument("-w", "--wordlist", action="append", dest="wordlists", default=[], metavar="PATH", help="Wordlist for FUZZ markers (repeatable)")
-    fuzz.add_argument("--payloads", action="append", dest="payloads", default=[], metavar="NAME", help="Built-in payload set (sqli/xss/ssti/traversal/cmdi)")
-    fuzz.add_argument("--fuzz-mode", choices=["clusterbomb", "pitchfork"], default="clusterbomb", help="Multi-wordlist mode")
+    fuzz.add_argument(
+        "-w",
+        "--wordlist",
+        action="append",
+        dest="wordlists",
+        default=[],
+        metavar="PATH",
+        help="Wordlist for FUZZ markers (repeatable)",
+    )
+    fuzz.add_argument(
+        "--payloads",
+        action="append",
+        dest="payloads",
+        default=[],
+        metavar="NAME",
+        help="Built-in payload set (sqli/xss/ssti/traversal/cmdi)",
+    )
+    fuzz.add_argument(
+        "--fuzz-mode", choices=["clusterbomb", "pitchfork"], default="clusterbomb", help="Multi-wordlist mode"
+    )
     fuzz.add_argument("--encode", metavar="LIST", help="Encoder chain applied to payloads (e.g. url,base64)")
     fuzz.add_argument("--concurrency", type=int, default=10, metavar="N", help="Concurrent fuzz requests")
     fuzz.add_argument("--rate", type=float, default=0.0, metavar="R", help="Max requests per second (0 = unlimited)")
@@ -59,8 +80,18 @@ def build_request_parser() -> argparse.ArgumentParser:
     fuzz.add_argument("--fs", type=int, metavar="N", help="Filter out response size N bytes")
     fuzz.add_argument("--mr", metavar="REGEX", help="Match body regex")
     parser.add_argument("-X", "--method", default="GET", metavar="METHOD", help="HTTP method (default: GET)")
-    parser.add_argument("-H", "--header", action="append", dest="headers", default=[], metavar="Key: Value", help="Header (repeatable)")
-    parser.add_argument("-p", "--param", action="append", dest="params", default=[], metavar="key=value", help="Query param (repeatable)")
+    parser.add_argument(
+        "-H", "--header", action="append", dest="headers", default=[], metavar="Key: Value", help="Header (repeatable)"
+    )
+    parser.add_argument(
+        "-p",
+        "--param",
+        action="append",
+        dest="params",
+        default=[],
+        metavar="key=value",
+        help="Query param (repeatable)",
+    )
     parser.add_argument("-b", "--body", default="", help="Request body as string")
     parser.add_argument("--body-file", metavar="PATH", help="Read request body from file")
     parser.add_argument("--json", dest="json_body", metavar="JSON", help="JSON body (sets Content-Type automatically)")
@@ -68,10 +99,20 @@ def build_request_parser() -> argparse.ArgumentParser:
     parser.add_argument("--auth-bearer", metavar="TOKEN", help="Bearer token")
     parser.add_argument("--auth-basic", metavar="USER:PASS", help="Basic auth credentials")
     parser.add_argument("--auth-apikey", metavar="'Header: Value'", help="API key auth")
-    parser.add_argument("--cookie", action="append", dest="cookies", default=[], metavar="k=v", help="Cookie (repeatable)")
+    parser.add_argument(
+        "--cookie", action="append", dest="cookies", default=[], metavar="k=v", help="Cookie (repeatable)"
+    )
     parser.add_argument("--cookie-jar", metavar="PATH", help="Persist/load cookies in a jar file")
     parser.add_argument("--session", metavar="NAME", help="Named session (persistent cookie jar)")
-    parser.add_argument("-F", "--form-file", action="append", dest="form", default=[], metavar="name=@file", help="Multipart field/file (repeatable)")
+    parser.add_argument(
+        "-F",
+        "--form-file",
+        action="append",
+        dest="form",
+        default=[],
+        metavar="name=@file",
+        help="Multipart field/file (repeatable)",
+    )
     parser.add_argument("--proxy", metavar="URL", help="Proxy URL to route the request through")
     parser.add_argument("--retry", type=int, default=0, metavar="N", help="Number of retry attempts on network error")
     parser.add_argument("--retry-delay", type=float, default=0.0, metavar="SECONDS", help="Delay between retries")
@@ -86,9 +127,30 @@ def build_request_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=30.0, metavar="SECONDS", help="Request timeout (default: 30)")
     asserts = parser.add_argument_group("assertions (test mode)")
     asserts.add_argument("--assert-status", type=int, metavar="N", help="Assert HTTP status equals N")
-    asserts.add_argument("--assert-header", action="append", dest="assert_headers", default=[], metavar="Name: Value", help="Assert header (repeatable)")
-    asserts.add_argument("--assert-body-contains", action="append", dest="assert_body", default=[], metavar="STR", help="Assert body contains STR (repeatable)")
-    asserts.add_argument("--assert-jsonpath", action="append", dest="assert_jsonpath", default=[], metavar="EXPR", help="Assert JSONPath (e.g. '$.user.id==42')")
+    asserts.add_argument(
+        "--assert-header",
+        action="append",
+        dest="assert_headers",
+        default=[],
+        metavar="Name: Value",
+        help="Assert header (repeatable)",
+    )
+    asserts.add_argument(
+        "--assert-body-contains",
+        action="append",
+        dest="assert_body",
+        default=[],
+        metavar="STR",
+        help="Assert body contains STR (repeatable)",
+    )
+    asserts.add_argument(
+        "--assert-jsonpath",
+        action="append",
+        dest="assert_jsonpath",
+        default=[],
+        metavar="EXPR",
+        help="Assert JSONPath (e.g. '$.user.id==42')",
+    )
     asserts.add_argument("--assert-max-ms", type=float, metavar="MS", help="Assert response time under MS milliseconds")
     asserts.add_argument("--report", choices=["json", "junit"], help="Emit an assertion report to stdout")
 
@@ -130,4 +192,6 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     return parser
 
 
-SUBCOMMANDS: frozenset[str] = frozenset({"history", "replay", "curl", "export-history", "delete-history", "clear-history"})
+SUBCOMMANDS: frozenset[str] = frozenset(
+    {"history", "replay", "curl", "export-history", "delete-history", "clear-history"}
+)

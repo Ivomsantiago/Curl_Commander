@@ -1,10 +1,10 @@
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer
 from textual.widget import Widget
 from textual.widgets import Button, Input, Label, Static, TabbedContent, TabPane
-from rich.syntax import Syntax
-from rich.table import Table
-from rich.text import Text
 
 from curlcommander.config import DISPLAY_LIMIT_BYTES
 from curlcommander.core.request_model import ResponseResult
@@ -57,9 +57,7 @@ class ResponsePanel(Widget):
     def show_result(self, result: ResponseResult) -> None:
         self._result = result
         if result.error:
-            self.query_one("#response-status", Static).update(
-                Text(f"Error: {result.error}", style="bold red")
-            )
+            self.query_one("#response-status", Static).update(Text(f"Error: {result.error}", style="bold red"))
             for id_ in ("#response-body", "#response-headers", "#response-raw", "#response-cookies"):
                 self.query_one(id_, Static).update("")
             return

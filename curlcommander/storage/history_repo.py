@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from curlcommander.config import DB_PATH, HISTORY_LIMIT
 from curlcommander.core.curl_builder import build_curl
@@ -55,15 +56,11 @@ class HistoryRepo:
         return cursor.lastrowid  # type: ignore[return-value]
 
     def load(self, limit: int = HISTORY_LIMIT) -> list[HistoryEntry]:
-        rows = self._conn.execute(
-            "SELECT * FROM history ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
+        rows = self._conn.execute("SELECT * FROM history ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
     def get_by_id(self, id: int) -> HistoryEntry | None:
-        row = self._conn.execute(
-            "SELECT * FROM history WHERE id = ?", (id,)
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM history WHERE id = ?", (id,)).fetchone()
         return self._row_to_entry(row) if row else None
 
     def delete_by_id(self, id: int) -> None:
@@ -92,7 +89,7 @@ class HistoryRepo:
         output.write_text(json.dumps(entries, indent=2), encoding="utf-8")
 
     @staticmethod
-    def _entry_to_jsonable(entry: HistoryEntry) -> dict:
+    def _entry_to_jsonable(entry: HistoryEntry) -> dict[str, Any]:
         return {
             "id": entry.id,
             "timestamp": entry.timestamp,

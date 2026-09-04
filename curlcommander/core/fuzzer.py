@@ -14,7 +14,8 @@ import asyncio
 import re
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from collections.abc import Iterator
+from dataclasses import dataclass
 from itertools import product
 
 from curlcommander.core.encoders import apply_encoders
@@ -86,9 +87,9 @@ def substitute(config: RequestConfig, mapping: dict[str, str]) -> RequestConfig:
     return clone
 
 
-def _combinations(wordlists: list[list[str]], mode: str):
+def _combinations(wordlists: list[list[str]], mode: str) -> Iterator[tuple[str, ...]]:
     if mode == "pitchfork":
-        return zip(*wordlists)
+        return zip(*wordlists, strict=False)
     return product(*wordlists)  # clusterbomb (default)
 
 
@@ -129,7 +130,7 @@ async def run_fuzz(
 
     async def one(payloads: tuple[str, ...]) -> FuzzResult:
         encoded = [apply_encoders(p, encoders) if encoders else p for p in payloads]
-        mapping = dict(zip(markers, encoded))
+        mapping = dict(zip(markers, encoded, strict=False))
         cfg = substitute(base, mapping)
         async with semaphore:
             await limiter.wait()

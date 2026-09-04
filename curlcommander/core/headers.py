@@ -15,7 +15,7 @@ common single-value case and for auth injection.
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from typing import Union
+from typing import Any, Union
 
 PairSource = Union["HeaderList", dict[str, str], Iterable[tuple[str, str]], None]
 
@@ -57,9 +57,7 @@ class HeaderList:
             if k.lower() == lowered:
                 self._items[i] = (k, str(value))
                 # Drop any further duplicates so "set" really means one.
-                self._items = [
-                    p for j, p in enumerate(self._items) if j == i or p[0].lower() != lowered
-                ]
+                self._items = [p for j, p in enumerate(self._items) if j == i or p[0].lower() != lowered]
                 return
         self._items.append((str(key), str(value)))
 
@@ -131,10 +129,10 @@ class HeaderList:
         return [[k, v] for k, v in self._items]
 
     @classmethod
-    def from_jsonable(cls, data: object) -> HeaderList:
+    def from_jsonable(cls, data: Any) -> HeaderList:
         if not data:
             return cls()
-        return cls([(str(k), str(v)) for k, v in data])  # type: ignore[misc]
+        return cls([(str(k), str(v)) for k, v in data])
 
     def copy(self) -> HeaderList:
         return HeaderList(self)

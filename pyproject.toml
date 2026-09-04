@@ -17,11 +17,40 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-asyncio",
+    "pytest-cov",
     "respx",
+    "ruff",
+    "mypy",
+    "pip-audit",
 ]
+socks = ["httpx[socks]"]
+clipboard = ["pyperclip"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "F841", "C408"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["curlcommander/core", "curlcommander/storage"]
+strict = true
+warn_unused_ignores = false
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["httpx.*"]
+ignore_missing_imports = true

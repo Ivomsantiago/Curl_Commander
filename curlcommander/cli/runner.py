@@ -10,6 +10,7 @@ from rich.table import Table
 from rich.text import Text
 
 from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
+from curlcommander.core import payloads, scope
 from curlcommander.core.api_styles import (
     graphql_config,
     graphql_field_names,
@@ -19,15 +20,13 @@ from curlcommander.core.api_styles import (
     soap_config,
     xml_config,
 )
-from curlcommander.core import scope
 from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
-from curlcommander.core.evidence import compose_raw_response, save_evidence
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
+from curlcommander.core.evidence import compose_raw_response, save_evidence
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send, stream_send
-from curlcommander.core import payloads
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
 from curlcommander.core.raw_http import RawRequestError, parse_raw_request
 from curlcommander.core.raw_transport import (
@@ -45,10 +44,10 @@ _console = Console()
 
 # Exit codes (curl-compatible where it matters).
 EXIT_OK = 0
-EXIT_USAGE = 1        # usage / parse / not-found
-EXIT_NETWORK = 2      # network / DNS / TLS / timeout
-EXIT_ASSERT = 3       # one or more --assert-* checks failed
-EXIT_HTTP = 22        # --fail and HTTP status >= 400 (matches curl --fail)
+EXIT_USAGE = 1  # usage / parse / not-found
+EXIT_NETWORK = 2  # network / DNS / TLS / timeout
+EXIT_ASSERT = 3  # one or more --assert-* checks failed
+EXIT_HTTP = 22  # --fail and HTTP status >= 400 (matches curl --fail)
 
 
 def run_cli(args) -> int:
@@ -88,6 +87,7 @@ def run_cli(args) -> int:
 # ---------------------------------------------------------------------------
 # Subcommand handlers
 # ---------------------------------------------------------------------------
+
 
 def _show_history(repo: HistoryRepo, reveal: bool = False) -> int:
     entries = repo.load()
@@ -163,6 +163,7 @@ def _export_history(repo: HistoryRepo, output: str, reveal: bool = False) -> int
 # Request execution
 # ---------------------------------------------------------------------------
 
+
 def _run_request(args, repo: HistoryRepo) -> int:
     no_redact = getattr(args, "no_redact", False)
     if no_redact:
@@ -179,6 +180,7 @@ def _run_request(args, repo: HistoryRepo) -> int:
         config = imported
     elif not args.url:
         from curlcommander.cli.wizard import run_wizard
+
         config = run_wizard()
         if config is None:
             return EXIT_OK
@@ -219,9 +221,15 @@ def _run_request(args, repo: HistoryRepo) -> int:
         return EXIT_OK
 
     return _execute_request(
-        config, repo, fail=getattr(args, "fail", False), env_vars=env_vars, no_redact=no_redact,
-        assert_spec=_build_assert_spec(args), report_fmt=getattr(args, "report", None),
-        evidence_dir=getattr(args, "evidence", None), engagement=getattr(args, "engagement", None),
+        config,
+        repo,
+        fail=getattr(args, "fail", False),
+        env_vars=env_vars,
+        no_redact=no_redact,
+        assert_spec=_build_assert_spec(args),
+        report_fmt=getattr(args, "report", None),
+        evidence_dir=getattr(args, "evidence", None),
+        engagement=getattr(args, "engagement", None),
     )
 
 
@@ -238,8 +246,11 @@ def _apply_api_style(config: RequestConfig, args) -> RequestConfig:
         return introspection_config(config.url, config.headers)
     if getattr(args, "soap", None):
         return soap_config(
-            config.url, _read_body_arg(args.soap), action=getattr(args, "soap_action", None),
-            wrap_envelope=getattr(args, "soap_envelope", False), headers=config.headers,
+            config.url,
+            _read_body_arg(args.soap),
+            action=getattr(args, "soap_action", None),
+            wrap_envelope=getattr(args, "soap_envelope", False),
+            headers=config.headers,
         )
     if getattr(args, "xml", None):
         return xml_config(config.url, _read_body_arg(args.xml), headers=config.headers)
@@ -307,11 +318,17 @@ def _run_fuzz(config: RequestConfig, args) -> int:
     )
     encoders = [e for e in (getattr(args, "encode", None) or "").split(",") if e] or None
 
-    results = asyncio.run(run_fuzz(
-        config, wordlists, mode=getattr(args, "fuzz_mode", "clusterbomb"),
-        filters=filters, concurrency=getattr(args, "concurrency", 10),
-        rate=getattr(args, "rate", 0.0), encoders=encoders,
-    ))
+    results = asyncio.run(
+        run_fuzz(
+            config,
+            wordlists,
+            mode=getattr(args, "fuzz_mode", "clusterbomb"),
+            filters=filters,
+            concurrency=getattr(args, "concurrency", 10),
+            rate=getattr(args, "rate", 0.0),
+            encoders=encoders,
+        )
+    )
 
     table = Table(title=f"Fuzz results ({len(results)} shown)")
     table.add_column("Payload", overflow="fold")
@@ -481,7 +498,11 @@ def _execute_request(
 
         _console.print(Syntax(body_text, get_lexer(result.content_type), theme="monokai", word_wrap=True))
         if truncated:
-            hint = f" — full body saved to {config.output_path}" if config.output_path else " — use --output to save the full body"
+            hint = (
+                f" — full body saved to {config.output_path}"
+                if config.output_path
+                else " — use --output to save the full body"
+            )
             _console.print(
                 f"[yellow]… output truncated at {DISPLAY_LIMIT_BYTES} bytes"
                 f" ({result.size_bytes} B total){hint}[/yellow]"
@@ -492,7 +513,12 @@ def _execute_request(
     if evidence_dir:
         raw_req = serialize_request(config, no_default_headers=config.no_default_headers)
         folder = save_evidence(
-            evidence_dir, config, raw_req, compose_raw_response(result), result, engagement=engagement,
+            evidence_dir,
+            config,
+            raw_req,
+            compose_raw_response(result),
+            result,
+            engagement=engagement,
         )
         _console.print(f"[green]Evidence saved to[/green] [bold]{folder}[/bold]")
 
@@ -509,6 +535,7 @@ def _execute_request(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _maybe_import(args) -> RequestConfig | None:
     """Build a config from a --import* source, or None if none was given."""
     if getattr(args, "import_curl", None):
@@ -517,6 +544,7 @@ def _maybe_import(args) -> RequestConfig | None:
         return parse_curl(Path(args.import_file).read_text(encoding="utf-8"))
     if getattr(args, "import_clipboard", False):
         from curlcommander.core.clipboard import read_clipboard
+
         return parse_curl(read_clipboard())
     if getattr(args, "import_raw", None):
         text = Path(args.import_raw).read_text(encoding="utf-8")
