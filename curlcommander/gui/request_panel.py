@@ -6,6 +6,7 @@ from textual.widgets import Button, Input, Label, Select, TextArea
 
 from curlcommander.config import AUTH_TYPES, BODY_TYPES, HTTP_METHODS
 from curlcommander.core.headers import HeaderList
+from curlcommander.core.parsing import ParseError, parse_header, parse_param
 from curlcommander.core.request_model import RequestConfig
 
 
@@ -141,17 +142,19 @@ class RequestPanel(Widget):
 
         headers = HeaderList()
         for line in self.query_one("#headers-area", TextArea).text.splitlines():
-            line = line.strip()
-            if ":" in line:
-                k, v = line.split(":", 1)
-                headers.append(k.strip(), v.strip())
+            try:
+                k, v = parse_header(line)
+                headers.append(k, v)
+            except ParseError:
+                continue  # ignore incomplete lines while the user is typing
 
         params = HeaderList()
         for line in self.query_one("#params-area", TextArea).text.splitlines():
-            line = line.strip()
-            if "=" in line:
-                k, v = line.split("=", 1)
-                params.append(k.strip(), v.strip())
+            try:
+                k, v = parse_param(line)
+                params.append(k, v)
+            except ParseError:
+                continue
 
         body_type = self._select_value("body-type-select", "none")
         body = self.query_one("#body-area", TextArea).text

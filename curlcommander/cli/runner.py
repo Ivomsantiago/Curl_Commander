@@ -12,6 +12,7 @@ from curlcommander.config import DB_PATH
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
+from curlcommander.core.parsing import ParseError, parse_headers, parse_params
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.core.response_formatter import format_body, get_lexer
 from curlcommander.storage.history_repo import HistoryRepo
@@ -45,6 +46,9 @@ def run_cli(args) -> int:
                 return EXIT_OK
             case _:
                 return _run_request(args, repo)
+    except ParseError as exc:
+        _console.print(f"[red bold]Error:[/red bold] {exc}")
+        return EXIT_USAGE
     finally:
         repo.close()
 
@@ -177,17 +181,8 @@ def _execute_request(config: RequestConfig, repo: HistoryRepo, fail: bool = Fals
 # ---------------------------------------------------------------------------
 
 def _build_config(args) -> RequestConfig:
-    headers = HeaderList()
-    for h in args.headers:
-        if ": " in h:
-            k, v = h.split(": ", 1)
-            headers.append(k.strip(), v.strip())
-
-    params = HeaderList()
-    for p in args.params:
-        if "=" in p:
-            k, v = p.split("=", 1)
-            params.append(k.strip(), v.strip())
+    headers = parse_headers(args.headers)
+    params = parse_params(args.params)
 
     body = ""
     body_type = "none"
