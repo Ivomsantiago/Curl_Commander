@@ -27,6 +27,7 @@ from curlcommander.core.evidence import compose_raw_response, save_evidence
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send, stream_send
+from curlcommander.core.logging_setup import get_logger, setup_logging
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
 from curlcommander.core.raw_http import RawRequestError, parse_raw_request
 from curlcommander.core.raw_transport import (
@@ -51,6 +52,7 @@ EXIT_HTTP = 22  # --fail and HTTP status >= 400 (matches curl --fail)
 
 
 def run_cli(args) -> int:
+    setup_logging(getattr(args, "log_file", None), getattr(args, "log_level", None))
     repo = HistoryRepo(DB_PATH)
     try:
         reveal = getattr(args, "reveal", False)
@@ -451,6 +453,7 @@ def _execute_request(
     if not config.verify_ssl:
         _console.print("[yellow]warning: TLS verification disabled (--no-verify)[/yellow]")
 
+    get_logger().info("request %s %s", config.method, config.url)
     _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
 
     if config.raw_path:
@@ -464,9 +467,12 @@ def _execute_request(
         result = asyncio.run(send(config))
 
     if result.error:
+        get_logger().error("network error for %s: %s", config.url, result.error)
         _console.print(f"[red bold]Error:[/red bold] {result.error}")
         _persist(config, None, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
         return EXIT_NETWORK
+
+    get_logger().info("response %s %s in %.0fms", result.status_code, config.url, result.duration_ms)
 
     style = _status_style(result.status_code)
     status_line = Text()

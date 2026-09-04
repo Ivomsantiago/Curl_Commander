@@ -2,6 +2,12 @@ import argparse
 from typing import NoReturn
 
 
+def _version() -> str:
+    from curlcommander import __version__
+
+    return __version__
+
+
 class ArgParser(argparse.ArgumentParser):
     """ArgumentParser that exits with code 1 (usage error) instead of 2."""
 
@@ -159,6 +165,9 @@ def build_request_parser() -> argparse.ArgumentParser:
     parser.add_argument("--curl-only", action="store_true", help="Print curl command without sending")
     parser.add_argument("--save", action="store_true", help="Save to history even with --curl-only")
     parser.add_argument("--gui", action="store_true", help="Launch the Textual TUI")
+    parser.add_argument("--log-file", metavar="PATH", help="Write redacted structured logs to PATH")
+    parser.add_argument("--log-level", choices=["debug", "info", "warning", "error"], help="Log verbosity")
+    parser.add_argument("--version", action="version", version=f"curlcmd {_version()}")
     return parser
 
 
