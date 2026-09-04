@@ -10,6 +10,7 @@ from curlcommander.gui.curl_panel import CurlPanel
 from curlcommander.gui.history_panel import HistoryPanel
 from curlcommander.gui.request_panel import RequestPanel
 from curlcommander.gui.response_panel import ResponsePanel
+from curlcommander.storage.history_repo import HistoryRepo
 
 
 class CurlCommanderApp(App):
@@ -37,6 +38,18 @@ class CurlCommanderApp(App):
         Binding("ctrl+h", "focus_history", "History", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def __init__(self, db_path=DB_PATH, **kwargs) -> None:
+        super().__init__(**kwargs)
+        # One connection reused for the whole session, closed on exit (1.11).
+        self.repo = HistoryRepo(db_path)
+
+    def on_unmount(self) -> None:
+        self.repo.close()
 
     # ------------------------------------------------------------------
     # Composition
@@ -97,7 +110,6 @@ class CurlCommanderApp(App):
 
     async def _send_request_worker(self, config: RequestConfig) -> None:
         from datetime import datetime
-        from curlcommander.storage.history_repo import HistoryRepo
 
         curl_cmd = build_curl(config)
         self.query_one(CurlPanel).update_curl(curl_cmd)
@@ -105,7 +117,6 @@ class CurlCommanderApp(App):
         result = await send(config)
         self.query_one(ResponsePanel).show_result(result)
 
-        repo = HistoryRepo(DB_PATH)
         entry = HistoryEntry(
             id=0,
             timestamp=datetime.now().isoformat(timespec="seconds"),
@@ -114,6 +125,6 @@ class CurlCommanderApp(App):
             duration_ms=result.duration_ms,
             curl_cmd=curl_cmd,
         )
-        repo.save(entry)
+        self.repo.save(entry)
 
         self.query_one(HistoryPanel).refresh_history()
