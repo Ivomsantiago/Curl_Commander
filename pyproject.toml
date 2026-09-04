@@ -5,13 +5,39 @@ build-backend = "hatchling.build"
 [project]
 name = "curlcommander"
 version = "0.2.0"
+description = "Terminal HTTP request builder, curl generator and API/AppSec testing tool"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
+authors = [{ name = "CurlCommander contributors" }]
+keywords = ["curl", "http", "api", "pentest", "appsec", "security", "fuzzing", "tui"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "httpx>=0.27",
     "rich>=13.0",
     "prompt_toolkit>=3.0",
     "textual>=0.60",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Ivomsantiago/Curl_Commander"
+Repository = "https://github.com/Ivomsantiago/Curl_Commander"
+Issues = "https://github.com/Ivomsantiago/Curl_Commander/issues"
+Changelog = "https://github.com/Ivomsantiago/Curl_Commander/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
@@ -54,3 +80,11 @@ disallow_untyped_defs = true
 [[tool.mypy.overrides]]
 module = ["httpx.*"]
 ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["curlcommander"]
+
+
+[tool.coverage.run]
+source = ["curlcommander"]
+omit = ["curlcommander/gui/*"]
