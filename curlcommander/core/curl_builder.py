@@ -1,9 +1,15 @@
 import shlex
 from urllib.parse import quote_plus
 
+from curlcommander.config import DEFAULT_TIMEOUT
 from curlcommander.core.auth_handler import resolve_auth
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.request_model import RequestConfig
+
+
+def _num(value: float) -> str:
+    """Render a numeric flag value without a trailing .0 when integral."""
+    return str(int(value)) if float(value).is_integer() else str(value)
 
 
 def _encode_params(params: HeaderList) -> str:
@@ -20,7 +26,13 @@ def build_curl(config: RequestConfig) -> str:
     """
     resolved = resolve_auth(config)
 
-    parts: list[str] = ["curl", "-L", "-s", "-i"]
+    parts: list[str] = ["curl"]
+
+    # -L only when redirects are actually followed (1.2).
+    if resolved.follow_redirects:
+        parts.append("-L")
+
+    parts += ["-s", "-i"]
 
     if resolved.http2:
         parts.append("--http2")
@@ -36,8 +48,17 @@ def build_curl(config: RequestConfig) -> str:
         if resolved.retry_delay > 0:
             parts += ["--retry-delay", str(resolved.retry_delay)]
 
+    # Reflect the request timeout in the generated command (1.3).
+    if resolved.timeout and resolved.timeout != DEFAULT_TIMEOUT:
+        parts += ["--max-time", _num(resolved.timeout)]
+
     if not resolved.verify_ssl:
         parts.append("-k")
+
+    # Basic auth is sent by httpx as an Authorization header, but resolve_auth
+    # leaves it out of headers; emit -u so the curl reproduces the request (1.1).
+    if resolved.auth_type == "basic" and resolved.auth_value:
+        parts += ["-u", resolved.auth_value]
 
     parts += ["-X", resolved.method]
 
