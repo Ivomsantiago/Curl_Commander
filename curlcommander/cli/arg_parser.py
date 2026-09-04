@@ -17,6 +17,12 @@ def build_request_parser() -> argparse.ArgumentParser:
         description="CurlCommander — visual HTTP request builder and curl generator",
     )
     parser.add_argument("url", nargs="?", help="Target URL")
+    imp = parser.add_argument_group("import")
+    imp.add_argument("--import", dest="import_curl", metavar="CURL", help="Import a curl command string")
+    imp.add_argument("--import-file", metavar="PATH", help="Import a curl command from a file")
+    imp.add_argument("--import-clipboard", action="store_true", help="Import a curl command from the clipboard")
+    imp.add_argument("--import-raw", metavar="PATH", help="Import a raw HTTP request block (Burp/.http)")
+    imp.add_argument("--host", metavar="URL", help="Base host for --import-raw (e.g. https://target)")
     parser.add_argument("-X", "--method", default="GET", metavar="METHOD", help="HTTP method (default: GET)")
     parser.add_argument("-H", "--header", action="append", dest="headers", default=[], metavar="Key: Value", help="Header (repeatable)")
     parser.add_argument("-p", "--param", action="append", dest="params", default=[], metavar="key=value", help="Query param (repeatable)")

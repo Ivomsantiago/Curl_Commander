@@ -11,9 +11,11 @@ from rich.text import Text
 
 from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
 from curlcommander.core.curl_builder import build_curl
+from curlcommander.core.curl_parser import CurlParseError, parse_curl
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
+from curlcommander.core.raw_http import RawRequestError, parse_raw_request
 from curlcommander.core.redaction import has_redacted, redact_config, reveal_config, reveal_text
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.core.response_formatter import format_body, get_lexer
@@ -49,7 +51,7 @@ def run_cli(args) -> int:
                 return EXIT_OK
             case _:
                 return _run_request(args, repo)
-    except ParseError as exc:
+    except (ParseError, CurlParseError, RawRequestError, FileNotFoundError) as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_USAGE
     finally:
@@ -140,12 +142,15 @@ def _run_request(args, repo: HistoryRepo) -> int:
         _console.print(
             "[yellow]warning: --no-redact stores credentials in clear text in the history DB[/yellow]",
         )
-    if not args.url:
+    env_vars: dict[str, str] = {}
+    imported = _maybe_import(args)
+    if imported is not None:
+        config = imported
+    elif not args.url:
         from curlcommander.cli.wizard import run_wizard
         config = run_wizard()
         if config is None:
             return EXIT_OK
-        env_vars: dict[str, str] = {}
     else:
         env_vars = _load_env_file(args.env_file) if args.env_file else {}
         config = _build_config(args, env_vars)
@@ -224,6 +229,21 @@ def _execute_request(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _maybe_import(args) -> RequestConfig | None:
+    """Build a config from a --import* source, or None if none was given."""
+    if getattr(args, "import_curl", None):
+        return parse_curl(args.import_curl)
+    if getattr(args, "import_file", None):
+        return parse_curl(Path(args.import_file).read_text(encoding="utf-8"))
+    if getattr(args, "import_clipboard", False):
+        from curlcommander.core.clipboard import read_clipboard
+        return parse_curl(read_clipboard())
+    if getattr(args, "import_raw", None):
+        text = Path(args.import_raw).read_text(encoding="utf-8")
+        return parse_raw_request(text, host=getattr(args, "host", None))
+    return None
+
 
 def _build_config(args, env_vars: dict[str, str] | None = None) -> RequestConfig:
     env_vars = env_vars if env_vars is not None else (_load_env_file(args.env_file) if args.env_file else {})
