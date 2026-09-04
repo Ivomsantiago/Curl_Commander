@@ -1,5 +1,4 @@
 import httpx
-import pytest
 import respx
 
 from curlcommander.core.http_client import send
@@ -45,9 +44,7 @@ async def test_post_with_json():
 
 @respx.mock
 async def test_404_response():
-    respx.get("https://example.com/missing").mock(
-        return_value=httpx.Response(404, text="Not Found")
-    )
+    respx.get("https://example.com/missing").mock(return_value=httpx.Response(404, text="Not Found"))
     config = RequestConfig(method="GET", url="https://example.com/missing")
     result = await send(config)
 
@@ -57,9 +54,7 @@ async def test_404_response():
 
 @respx.mock
 async def test_network_error_sets_error_field():
-    respx.get("https://example.com/fail").mock(
-        side_effect=httpx.ConnectError("Connection refused")
-    )
+    respx.get("https://example.com/fail").mock(side_effect=httpx.ConnectError("Connection refused"))
     config = RequestConfig(method="GET", url="https://example.com/fail")
     result = await send(config)
 
@@ -71,9 +66,7 @@ async def test_network_error_sets_error_field():
 
 @respx.mock
 async def test_bearer_auth_forwarded():
-    route = respx.get("https://secure.example.com/data").mock(
-        return_value=httpx.Response(200, text="ok")
-    )
+    route = respx.get("https://secure.example.com/data").mock(return_value=httpx.Response(200, text="ok"))
     config = RequestConfig(
         method="GET",
         url="https://secure.example.com/data",
@@ -88,9 +81,7 @@ async def test_bearer_auth_forwarded():
 
 @respx.mock
 async def test_query_params_in_request():
-    route = respx.get("https://example.com/search").mock(
-        return_value=httpx.Response(200, text="results")
-    )
+    route = respx.get("https://example.com/search").mock(return_value=httpx.Response(200, text="results"))
     config = RequestConfig(
         method="GET",
         url="https://example.com/search",

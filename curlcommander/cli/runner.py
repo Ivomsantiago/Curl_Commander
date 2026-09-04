@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -8,46 +9,95 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from curlcommander.config import DB_PATH
+from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
+from curlcommander.core import payloads, scope
+from curlcommander.core.api_styles import (
+    graphql_config,
+    graphql_field_names,
+    grpc_web_content_type,
+    introspection_config,
+    introspection_enabled,
+    soap_config,
+    xml_config,
+)
+from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
 from curlcommander.core.curl_builder import build_curl
-from curlcommander.core.http_client import send
+from curlcommander.core.curl_parser import CurlParseError, parse_curl
+from curlcommander.core.evidence import compose_raw_response, save_evidence
+from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
+from curlcommander.core.headers import HeaderList
+from curlcommander.core.http_client import send, stream_send
+from curlcommander.core.logging_setup import get_logger, setup_logging
+from curlcommander.core.parsing import ParseError, parse_headers, parse_params
+from curlcommander.core.raw_http import RawRequestError, parse_raw_request
+from curlcommander.core.raw_transport import (
+    RawTransportError,
+    send_raw_request,
+    serialize_request,
+    target_from_url,
+)
+from curlcommander.core.redaction import has_redacted, redact_config, reveal_config, reveal_text
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.core.response_formatter import format_body, get_lexer
 from curlcommander.storage.history_repo import HistoryRepo
 
 _console = Console()
 
+# Exit codes (curl-compatible where it matters).
+EXIT_OK = 0
+EXIT_USAGE = 1  # usage / parse / not-found
+EXIT_NETWORK = 2  # network / DNS / TLS / timeout
+EXIT_ASSERT = 3  # one or more --assert-* checks failed
+EXIT_HTTP = 22  # --fail and HTTP status >= 400 (matches curl --fail)
 
-def run_cli(args) -> None:
+
+def run_cli(args) -> int:
+    setup_logging(getattr(args, "log_file", None), getattr(args, "log_level", None))
     repo = HistoryRepo(DB_PATH)
-
-    match args.subcommand:
-        case "history":
-            _show_history(repo)
-        case "replay":
-            _replay(repo, args.id)
-        case "curl":
-            _show_curl_from_history(repo, args.id)
-        case "export-history":
-            _export_history(repo, args.output)
-        case "delete-history":
-            _delete_history(repo, args.id)
-        case "clear-history":
-            repo.clear()
-            _console.print("[green]History cleared.[/green]")
-        case _:
-            _run_request(args, repo)
+    try:
+        reveal = getattr(args, "reveal", False)
+        match args.subcommand:
+            case "history":
+                return _show_history(repo, reveal=reveal)
+            case "replay":
+                return _replay(repo, args.id)
+            case "curl":
+                return _show_curl_from_history(repo, args.id, reveal=reveal)
+            case "export-history":
+                return _export_history(repo, args.output, reveal=reveal)
+            case "delete-history":
+                return _delete_history(repo, args.id)
+            case "clear-history":
+                repo.clear()
+                _console.print("[green]History cleared.[/green]")
+                return EXIT_OK
+            case _:
+                return _run_request(args, repo)
+    except scope.ScopeError as exc:
+        _console.print(f"[red bold]Refused:[/red bold] {exc}")
+        return EXIT_USAGE
+    except RawTransportError as exc:
+        _console.print(f"[red bold]Error:[/red bold] {exc}")
+        return EXIT_NETWORK
+    except (ParseError, CurlParseError, RawRequestError, FileNotFoundError) as exc:
+        _console.print(f"[red bold]Error:[/red bold] {exc}")
+        return EXIT_USAGE
+    finally:
+        repo.close()
 
 
 # ---------------------------------------------------------------------------
 # Subcommand handlers
 # ---------------------------------------------------------------------------
 
-def _show_history(repo: HistoryRepo) -> None:
+
+def _show_history(repo: HistoryRepo, reveal: bool = False) -> int:
     entries = repo.load()
     if not entries:
         _console.print("[dim]No history entries.[/dim]")
-        return
+        return EXIT_OK
+
+    env = dict(os.environ)
 
     table = Table(title="Request History", show_lines=False)
     table.add_column("ID", style="dim", justify="right")
@@ -59,75 +109,377 @@ def _show_history(repo: HistoryRepo) -> None:
 
     for entry in entries:
         style = _status_style(entry.status_code)
+        url = reveal_text(entry.request.url, env) if reveal else entry.request.url
         table.add_row(
             str(entry.id),
             entry.timestamp,
             entry.request.method,
-            entry.request.url,
+            url,
             f"[{style}]{entry.status_code or 'ERR'}[/{style}]",
             f"{entry.duration_ms:.0f}",
         )
 
     _console.print(table)
+    return EXIT_OK
 
 
-def _replay(repo: HistoryRepo, id: int) -> None:
+def _replay(repo: HistoryRepo, id: int) -> int:
     entry = repo.get_by_id(id)
     if entry is None:
         _console.print(f"[red]No history entry with ID {id}.[/red]")
-        return
+        return EXIT_USAGE
+
+    # Stored requests are redacted; resolve {{VAR}} references from the
+    # environment and refuse to send an unrecoverable REDACTED credential (1.4).
+    prepared = reveal_config(entry.request, dict(os.environ))
+    if has_redacted(prepared):
+        _console.print(
+            "[red]Cannot replay: a credential was redacted at save time.[/red] "
+            "Re-run with the original --env-file/env vars set, or the request "
+            "was saved with a literal secret that is no longer stored."
+        )
+        return EXIT_USAGE
 
     _console.print(f"[dim]Replaying #{id}…[/dim]")
-    _execute_request(entry.request, repo)
+    return _execute_request(prepared, repo)
 
 
-def _show_curl_from_history(repo: HistoryRepo, id: int) -> None:
+def _show_curl_from_history(repo: HistoryRepo, id: int, reveal: bool = False) -> int:
     entry = repo.get_by_id(id)
     if entry is None:
         _console.print(f"[red]No history entry with ID {id}.[/red]")
-        return
+        return EXIT_USAGE
 
-    _print_curl(entry.curl_cmd)
+    curl_cmd = reveal_text(entry.curl_cmd, dict(os.environ)) if reveal else entry.curl_cmd
+    _print_curl(curl_cmd)
+    return EXIT_OK
 
 
-def _export_history(repo: HistoryRepo, output: str) -> None:
-    repo.export_json(output)
+def _export_history(repo: HistoryRepo, output: str, reveal: bool = False) -> int:
+    repo.export_json(output, reveal=reveal)
     _console.print(f"[green]History exported to[/green] [bold]{output}[/bold]")
+    return EXIT_OK
 
 
 # ---------------------------------------------------------------------------
 # Request execution
 # ---------------------------------------------------------------------------
 
-def _run_request(args, repo: HistoryRepo) -> None:
-    if not args.url:
+
+def _run_request(args, repo: HistoryRepo) -> int:
+    no_redact = getattr(args, "no_redact", False)
+    if no_redact:
+        _console.print(
+            "[yellow]warning: --no-redact stores credentials in clear text in the history DB[/yellow]",
+        )
+    # Raw byte-level path (2B.2): a raw request file, sent over a socket as-is.
+    if getattr(args, "raw_request", None):
+        return _execute_raw_request(args, repo)
+
+    env_vars: dict[str, str] = {}
+    imported = _maybe_import(args)
+    if imported is not None:
+        config = imported
+    elif not args.url:
         from curlcommander.cli.wizard import run_wizard
+
         config = run_wizard()
         if config is None:
-            return
+            return EXIT_OK
     else:
-        config = _build_config(args)
+        env_vars = _load_env_file(args.env_file) if args.env_file else {}
+        config = _build_config(args, env_vars)
+
+    # API styles (2B.6): reshape the config for GraphQL / SOAP / XML / gRPC-web.
+    config = _apply_api_style(config, args)
+
+    # --burp shortcut (2B.7): route through Burp/ZAP and skip TLS verify.
+    if getattr(args, "burp", False):
+        if not config.proxy:
+            config.proxy = "http://127.0.0.1:8080"
+        config.verify_ssl = False
+        _console.print("[yellow]routing through Burp (127.0.0.1:8080), TLS verification off[/yellow]")
+
+    # Scope allowlist enforcement (2B.8): refuse out-of-scope targets.
+    if getattr(args, "scope", None):
+        scope.enforce(config.url, scope.load_scope(args.scope))
+
+    # Dry run (2B.8): show the wire bytes without sending.
+    if getattr(args, "dry_run", False):
+        raw = serialize_request(config, no_default_headers=config.no_default_headers)
+        _console.print("[dim]--- would send (dry-run) ---[/dim]")
+        _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
+        _print_curl(build_curl(config))
+        return EXIT_OK
+
+    if getattr(args, "graphql_introspection", False):
+        return _run_introspection(config)
+
+    if getattr(args, "stream", False):
+        return _run_stream(config)
+
+    # Fuzzing (2B.3): a wordlist / built-in payload set plus FUZZ markers.
+    if getattr(args, "wordlists", None) or getattr(args, "payloads", None):
+        return _run_fuzz(config, args)
 
     if args.curl_only:
         curl_cmd = build_curl(config)
         _print_curl(curl_cmd)
         if args.save:
-            _persist(config, None, 0.0, curl_cmd, repo)
-        return
+            _persist(config, None, 0.0, repo, env_vars=env_vars, no_redact=no_redact)
+        return EXIT_OK
 
-    _execute_request(config, repo)
+    return _execute_request(
+        config,
+        repo,
+        fail=getattr(args, "fail", False),
+        env_vars=env_vars,
+        no_redact=no_redact,
+        assert_spec=_build_assert_spec(args),
+        report_fmt=getattr(args, "report", None),
+        evidence_dir=getattr(args, "evidence", None),
+        engagement=getattr(args, "engagement", None),
+    )
 
 
-def _execute_request(config: RequestConfig, repo: HistoryRepo) -> None:
-    curl_cmd = build_curl(config)
-    _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
+def _read_body_arg(value: str) -> str:
+    if value.startswith("@"):
+        return Path(value[1:]).read_text(encoding="utf-8")
+    return value
 
+
+def _apply_api_style(config: RequestConfig, args) -> RequestConfig:
+    if getattr(args, "graphql", None):
+        return graphql_config(config.url, args.graphql, getattr(args, "graphql_vars", None), config.headers)
+    if getattr(args, "graphql_introspection", False):
+        return introspection_config(config.url, config.headers)
+    if getattr(args, "soap", None):
+        return soap_config(
+            config.url,
+            _read_body_arg(args.soap),
+            action=getattr(args, "soap_action", None),
+            wrap_envelope=getattr(args, "soap_envelope", False),
+            headers=config.headers,
+        )
+    if getattr(args, "xml", None):
+        return xml_config(config.url, _read_body_arg(args.xml), headers=config.headers)
+    if getattr(args, "grpc_web", False):
+        config.headers.setdefault("Content-Type", grpc_web_content_type())
+    return config
+
+
+def _run_introspection(config: RequestConfig) -> int:
+    _console.print(f"[dim]→ GraphQL introspection {config.url}[/dim]")
     result = asyncio.run(send(config))
-
     if result.error:
         _console.print(f"[red bold]Error:[/red bold] {result.error}")
-        _persist(config, None, result.duration_ms, curl_cmd, repo)
-        return
+        return EXIT_NETWORK
+    if introspection_enabled(result.body):
+        names = graphql_field_names(result.body)
+        _console.print(f"[red bold]Introspection ENABLED[/red bold] — {len(names)} types exposed")
+        _console.print("[dim]" + ", ".join(n for n in names if not n.startswith("__"))[:2000] + "[/dim]")
+    else:
+        _console.print("[green]Introspection appears disabled.[/green]")
+    return EXIT_OK
+
+
+def _run_stream(config: RequestConfig) -> int:
+    _console.print(f"[dim]→ streaming {config.method} {config.url}[/dim]")
+
+    def on_line(line: str) -> None:
+        _console.print(line, highlight=False)
+
+    result = asyncio.run(stream_send(config, on_line))
+    if result.error:
+        _console.print(f"[red bold]Error:[/red bold] {result.error}")
+        return EXIT_NETWORK
+    _console.print(f"[dim]{result.size_bytes} lines, {result.duration_ms:.0f} ms[/dim]")
+    return EXIT_OK
+
+
+def _run_fuzz(config: RequestConfig, args) -> int:
+    wordlists = [_load_wordlist(p) for p in getattr(args, "wordlists", [])]
+    for name in getattr(args, "payloads", []) or []:
+        try:
+            wordlists.append(payloads.load(name))
+        except KeyError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+    if not wordlists or any(not wl for wl in wordlists):
+        _console.print("[red]Error:[/red] a wordlist/payload set is empty or unreadable.")
+        return EXIT_USAGE
+
+    markers = markers_for(len(wordlists))
+    present = find_markers(config, markers)
+    if not present:
+        _console.print(
+            f"[red]Error:[/red] no fuzz markers found. Place {', '.join(markers)} "
+            "in the URL, a header/param/cookie value, or the body."
+        )
+        return EXIT_USAGE
+
+    filters = FuzzFilters(
+        match_codes=_int_set(getattr(args, "mc", None)),
+        filter_codes=_int_set(getattr(args, "fc", None)),
+        match_size=getattr(args, "ms", None),
+        filter_size=getattr(args, "fs", None),
+        match_regex=getattr(args, "mr", None),
+    )
+    encoders = [e for e in (getattr(args, "encode", None) or "").split(",") if e] or None
+
+    results = asyncio.run(
+        run_fuzz(
+            config,
+            wordlists,
+            mode=getattr(args, "fuzz_mode", "clusterbomb"),
+            filters=filters,
+            concurrency=getattr(args, "concurrency", 10),
+            rate=getattr(args, "rate", 0.0),
+            encoders=encoders,
+        )
+    )
+
+    table = Table(title=f"Fuzz results ({len(results)} shown)")
+    table.add_column("Payload", overflow="fold")
+    table.add_column("Status", justify="center")
+    table.add_column("Size", justify="right")
+    table.add_column("ms", justify="right")
+    table.add_column("", justify="center")
+    for r in results:
+        style = _status_style(r.status_code)
+        table.add_row(
+            " / ".join(r.payloads),
+            f"[{style}]{r.status_code or 'ERR'}[/{style}]",
+            str(r.size_bytes),
+            f"{r.duration_ms:.0f}",
+            "[bold yellow]★[/bold yellow]" if r.anomaly else "",
+        )
+    _console.print(table)
+    return EXIT_OK
+
+
+def _load_wordlist(path: str) -> list[str]:
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [line.strip() for line in text.splitlines() if line.strip() and not line.startswith("#")]
+
+
+def _int_set(value: str | None) -> set[int] | None:
+    if not value:
+        return None
+    out: set[int] = set()
+    for part in value.split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.add(int(part))
+    return out or None
+
+
+def _execute_raw_request(args, repo: HistoryRepo) -> int:
+    """Send a raw HTTP request block byte-for-byte over a socket (2B.2)."""
+    raw = Path(args.raw_request).read_bytes()
+
+    host_arg = getattr(args, "host", None)
+    if host_arg:
+        host, port, use_tls = target_from_url(host_arg)
+    else:
+        host, port, use_tls = _target_from_raw(raw)
+
+    if getattr(args, "scope", None):
+        scope.enforce(host, scope.load_scope(args.scope))
+
+    verify = not getattr(args, "no_verify", False)
+    timeout = getattr(args, "timeout", 30.0)
+
+    _console.print("[dim]--- raw request ---[/dim]")
+    _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
+
+    if getattr(args, "dry_run", False):
+        _console.print("[dim](dry-run: not sent)[/dim]")
+        return EXIT_OK
+
+    result = send_raw_request(raw, host, port, use_tls, verify, timeout)
+    if result.error:
+        _console.print(f"[red bold]Error:[/red bold] {result.error}")
+        return EXIT_NETWORK
+
+    _console.print("[dim]--- raw response ---[/dim]")
+    _console.print(result.content.decode("latin-1", errors="replace"), highlight=False)
+
+    # Persist a best-effort config view for history.
+    try:
+        cfg = parse_raw_request(raw.decode("latin-1", errors="replace"), host=host_arg)
+        _persist(cfg, result.status_code, result.duration_ms, repo)
+    except (RawRequestError, ValueError):
+        pass
+    return EXIT_OK
+
+
+def _target_from_raw(raw: bytes) -> tuple[str, int, bool]:
+    for line in raw.split(b"\r\n")[1:]:
+        if line.lower().startswith(b"host:"):
+            return target_from_url(line.split(b":", 1)[1].strip().decode("latin-1"))
+    raise RawTransportError("no --host and no Host header; cannot route raw request")
+
+
+def _build_assert_spec(args) -> AssertionSpec:
+    return AssertionSpec(
+        status=getattr(args, "assert_status", None),
+        headers=getattr(args, "assert_headers", None) or None,
+        body_contains=getattr(args, "assert_body", None) or None,
+        jsonpaths=getattr(args, "assert_jsonpath", None) or None,
+        max_ms=getattr(args, "assert_max_ms", None),
+    )
+
+
+def _report_assertions(result, spec: AssertionSpec, report_fmt: str | None, url: str) -> bool:
+    """Print assertion outcomes; return True if all passed."""
+    results = run_assertions(result, spec)
+    if report_fmt:
+        print(format_report(results, report_fmt, url=url))
+    else:
+        for r in results:
+            mark = "[green]PASS[/green]" if r.passed else "[red]FAIL[/red]"
+            _console.print(f"{mark} {r.name}" + (f"  [dim]({r.detail})[/dim]" if r.detail else ""))
+    return all(r.passed for r in results)
+
+
+def _execute_request(
+    config: RequestConfig,
+    repo: HistoryRepo,
+    fail: bool = False,
+    env_vars: dict[str, str] | None = None,
+    no_redact: bool = False,
+    assert_spec: AssertionSpec | None = None,
+    report_fmt: str | None = None,
+    evidence_dir: str | None = None,
+    engagement: str | None = None,
+) -> int:
+    if not config.verify_ssl:
+        _console.print("[yellow]warning: TLS verification disabled (--no-verify)[/yellow]")
+
+    get_logger().info("request %s %s", config.method, config.url)
+    _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
+
+    if config.raw_path:
+        # Byte-faithful request line via the raw socket transport (2B.1).
+        host, port, use_tls = target_from_url(config.url)
+        raw = serialize_request(config, no_default_headers=config.no_default_headers)
+        _console.print("[dim]--- raw request ---[/dim]")
+        _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
+        result = send_raw_request(raw, host, port, use_tls, config.verify_ssl, config.timeout)
+    else:
+        result = asyncio.run(send(config))
+
+    if result.error:
+        get_logger().error("network error for %s: %s", config.url, result.error)
+        _console.print(f"[red bold]Error:[/red bold] {result.error}")
+        _persist(config, None, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
+        return EXIT_NETWORK
+
+    get_logger().info("response %s %s in %.0fms", result.status_code, config.url, result.duration_ms)
 
     style = _status_style(result.status_code)
     status_line = Text()
@@ -142,35 +494,81 @@ def _execute_request(config: RequestConfig, repo: HistoryRepo) -> None:
         header_table.add_row(k, v)
     _console.print(header_table)
 
+    # Save the full raw bytes first, independent of what we render (1.8).
+    if config.output_path:
+        Path(config.output_path).write_bytes(result.content)
+        _console.print(f"[green]Response body saved to[/green] [bold]{config.output_path}[/bold]")
+
     if result.body:
-        body_text = result.body
-        if config.pretty or (config.pretty is False and "json" in result.content_type.lower()):
-            body_text = format_body(result.body, result.content_type)
+        # JSON is pretty-printed automatically; --raw turns all formatting off (1.10).
+        body_text = result.body if config.raw else format_body(result.body, result.content_type)
+
+        # Truncate what we render so a huge payload can't freeze the terminal (1.9).
+        truncated = False
+        if len(body_text) > DISPLAY_LIMIT_BYTES:
+            body_text = body_text[:DISPLAY_LIMIT_BYTES]
+            truncated = True
+
         _console.print(Syntax(body_text, get_lexer(result.content_type), theme="monokai", word_wrap=True))
+        if truncated:
+            hint = (
+                f" — full body saved to {config.output_path}"
+                if config.output_path
+                else " — use --output to save the full body"
+            )
+            _console.print(
+                f"[yellow]… output truncated at {DISPLAY_LIMIT_BYTES} bytes"
+                f" ({result.size_bytes} B total){hint}[/yellow]"
+            )
 
-        if config.output_path:
-            Path(config.output_path).write_text(body_text, encoding="utf-8")
-            _console.print(f"[green]Response body saved to[/green] [bold]{config.output_path}[/bold]")
+    _persist(config, result.status_code, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
 
-    _persist(config, result.status_code, result.duration_ms, curl_cmd, repo)
+    if evidence_dir:
+        raw_req = serialize_request(config, no_default_headers=config.no_default_headers)
+        folder = save_evidence(
+            evidence_dir,
+            config,
+            raw_req,
+            compose_raw_response(result),
+            result,
+            engagement=engagement,
+        )
+        _console.print(f"[green]Evidence saved to[/green] [bold]{folder}[/bold]")
+
+    if assert_spec is not None and not assert_spec.is_empty():
+        if not _report_assertions(result, assert_spec, report_fmt, config.url):
+            return EXIT_ASSERT
+
+    if fail and result.status_code is not None and result.status_code >= 400:
+        return EXIT_HTTP
+    return EXIT_OK
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _build_config(args) -> RequestConfig:
-    headers: dict[str, str] = {}
-    for h in args.headers:
-        if ": " in h:
-            k, v = h.split(": ", 1)
-            headers[k.strip()] = v.strip()
 
-    params: dict[str, str] = {}
-    for p in args.params:
-        if "=" in p:
-            k, v = p.split("=", 1)
-            params[k.strip()] = v.strip()
+def _maybe_import(args) -> RequestConfig | None:
+    """Build a config from a --import* source, or None if none was given."""
+    if getattr(args, "import_curl", None):
+        return parse_curl(args.import_curl)
+    if getattr(args, "import_file", None):
+        return parse_curl(Path(args.import_file).read_text(encoding="utf-8"))
+    if getattr(args, "import_clipboard", False):
+        from curlcommander.core.clipboard import read_clipboard
+
+        return parse_curl(read_clipboard())
+    if getattr(args, "import_raw", None):
+        text = Path(args.import_raw).read_text(encoding="utf-8")
+        return parse_raw_request(text, host=getattr(args, "host", None))
+    return None
+
+
+def _build_config(args, env_vars: dict[str, str] | None = None) -> RequestConfig:
+    env_vars = env_vars if env_vars is not None else (_load_env_file(args.env_file) if args.env_file else {})
+    headers = parse_headers(args.headers)
+    params = parse_params(args.params)
 
     body = ""
     body_type = "none"
@@ -192,17 +590,33 @@ def _build_config(args) -> RequestConfig:
     elif args.auth_apikey:
         auth_type, auth_value = "apikey", args.auth_apikey
 
-    env_vars = _load_env_file(args.env_file) if args.env_file else {}
+    cookies = HeaderList()
+    for c in getattr(args, "cookies", []) or []:
+        k, _, v = c.partition("=")
+        cookies.append(k.strip(), v)
+
+    form = HeaderList()
+    for f in getattr(args, "form", []) or []:
+        name, _, spec = f.partition("=")
+        form.append(name.strip(), spec)
+
     url = _substitute_variables(args.url or "", env_vars)
-    headers = {k: _substitute_variables(v, env_vars) for k, v in headers.items()}
-    params = {k: _substitute_variables(v, env_vars) for k, v in params.items()}
+    headers = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in headers])
+    params = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in params])
     body = _substitute_variables(body, env_vars)
+    auth_value = _substitute_variables(auth_value, env_vars)
 
     return RequestConfig(
         method=args.method.upper(),
         url=url,
         headers=headers,
         params=params,
+        cookies=cookies,
+        form=form,
+        no_default_headers=getattr(args, "no_default_headers", False),
+        raw_path=getattr(args, "raw_path", False),
+        cookie_jar=getattr(args, "cookie_jar", None) or "",
+        session=getattr(args, "session", None) or "",
         body=body,
         body_type=body_type,
         auth_type=auth_type,
@@ -214,6 +628,7 @@ def _build_config(args) -> RequestConfig:
         http2=args.http2,
         output_path=args.output or "",
         pretty=args.pretty,
+        raw=getattr(args, "raw", False),
         env_file=args.env_file or "",
         follow_redirects=not args.no_redirect,
         verify_ssl=not args.no_verify,
@@ -225,16 +640,20 @@ def _persist(
     config: RequestConfig,
     status_code: int | None,
     duration_ms: float,
-    curl_cmd: str,
     repo: HistoryRepo,
+    env_vars: dict[str, str] | None = None,
+    no_redact: bool = False,
 ) -> None:
+    # Redact secrets before they ever touch disk (1.5). The stored curl is
+    # regenerated from the redacted config so it can never leak a token either.
+    stored = config if no_redact else redact_config(config, env_vars or {})
     entry = HistoryEntry(
         id=0,
         timestamp=datetime.now().isoformat(timespec="seconds"),
-        request=config,
+        request=stored,
         status_code=status_code,
         duration_ms=duration_ms,
-        curl_cmd=curl_cmd,
+        curl_cmd=build_curl(stored),
     )
     repo.save(entry)
 
@@ -243,13 +662,14 @@ def _print_curl(curl_cmd: str) -> None:
     _console.print(Syntax(curl_cmd, "bash", theme="monokai", word_wrap=True))
 
 
-def _delete_history(repo: HistoryRepo, id: int) -> None:
+def _delete_history(repo: HistoryRepo, id: int) -> int:
     entry = repo.get_by_id(id)
     if entry is None:
         _console.print(f"[red]No history entry with ID {id}.[/red]")
-        return
+        return EXIT_USAGE
     repo.delete_by_id(id)
     _console.print(f"[green]Deleted history entry {id}.[/green]")
+    return EXIT_OK
 
 
 def _load_env_file(path: str) -> dict[str, str]:

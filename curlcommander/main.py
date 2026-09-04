@@ -10,6 +10,7 @@ def main() -> None:
 
     if "--gui" in sys.argv:
         from curlcommander.gui.app import CurlCommanderApp
+
         CurlCommanderApp().run()
         return
 
@@ -20,7 +21,8 @@ def main() -> None:
         args.subcommand = None
 
     from curlcommander.cli.runner import run_cli
-    run_cli(args)
+
+    sys.exit(run_cli(args))
 
 
 if __name__ == "__main__":

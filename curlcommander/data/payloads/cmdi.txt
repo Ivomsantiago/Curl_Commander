@@ -1,0 +1,6 @@
+; id
+| id
+`id`
+$(id)
+& whoami
+|| ping -c1 127.0.0.1

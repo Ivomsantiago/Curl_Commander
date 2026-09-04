@@ -13,7 +13,7 @@ def test_json_pretty_prints():
 
 
 def test_json_with_charset():
-    body = '[1, 2, 3]'
+    body = "[1, 2, 3]"
     result = format_body(body, "application/json; charset=utf-8")
     assert result == "[\n  1,\n  2,\n  3\n]"
 

@@ -10,6 +10,7 @@ from curlcommander.gui.curl_panel import CurlPanel
 from curlcommander.gui.history_panel import HistoryPanel
 from curlcommander.gui.request_panel import RequestPanel
 from curlcommander.gui.response_panel import ResponsePanel
+from curlcommander.storage.history_repo import HistoryRepo
 
 
 class CurlCommanderApp(App):
@@ -32,11 +33,32 @@ class CurlCommanderApp(App):
     """
 
     BINDINGS = [
-        Binding("ctrl+enter", "send_request", "Send", show=True),
+        # Ctrl+Enter is unreliable across terminal emulators; Ctrl+S is the
+        # documented, portable primary. Ctrl+Enter kept as a bonus where it works.
+        Binding("ctrl+s", "send_request", "Send", show=True),
+        Binding("ctrl+enter", "send_request", "Send", show=False),
+        Binding("ctrl+y", "copy_curl", "Copy curl", show=True),
+        Binding("ctrl+x", "cancel_request", "Cancel", show=True),
         Binding("ctrl+l", "clear_form", "Clear Form", show=True),
         Binding("ctrl+h", "focus_history", "History", show=True),
-        Binding("q", "quit", "Quit", show=True),
+        # Ctrl+Q (not bare 'q', which conflicts with typing in inputs).
+        Binding("ctrl+q", "quit", "Quit", show=True),
     ]
+
+    _last_curl: str = ""
+    _last_content: bytes = b""
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def __init__(self, db_path=DB_PATH, **kwargs) -> None:
+        super().__init__(**kwargs)
+        # One connection reused for the whole session, closed on exit (1.11).
+        self.repo = HistoryRepo(db_path)
+
+    def on_unmount(self) -> None:
+        self.repo.close()
 
     # ------------------------------------------------------------------
     # Composition
@@ -67,6 +89,34 @@ class CurlCommanderApp(App):
     def action_focus_history(self) -> None:
         self.query_one(HistoryPanel).focus()
 
+    def action_copy_curl(self) -> None:
+        from curlcommander.core.clipboard import ClipboardError, write_clipboard
+
+        if not self._last_curl:
+            self.notify("Nothing to copy yet.", severity="warning")
+            return
+        try:
+            write_clipboard(self._last_curl)
+            self.notify("curl copied to clipboard.")
+        except ClipboardError as exc:
+            self.notify(str(exc), severity="error")
+
+    def action_cancel_request(self) -> None:
+        self.workers.cancel_all()
+        self.query_one(ResponsePanel).query_one("#response-status").update("cancelled")
+
+    def on_button_pressed(self, event) -> None:
+        if event.button.id != "save-response-btn":
+            return
+        if not self._last_content:
+            self.notify("No response to save.", severity="warning")
+            return
+        from pathlib import Path
+
+        out = Path("curlcommander-response.bin")
+        out.write_bytes(self._last_content)
+        self.notify(f"Response saved to {out}")
+
     # ------------------------------------------------------------------
     # Message handlers
     # ------------------------------------------------------------------
@@ -77,6 +127,7 @@ class CurlCommanderApp(App):
     def on_request_panel_config_changed(self, event: RequestPanel.ConfigChanged) -> None:
         try:
             curl_cmd = build_curl(event.config)
+            self._last_curl = curl_cmd
             self.query_one(CurlPanel).update_curl(curl_cmd)
         except Exception:
             pass
@@ -97,15 +148,18 @@ class CurlCommanderApp(App):
 
     async def _send_request_worker(self, config: RequestConfig) -> None:
         from datetime import datetime
-        from curlcommander.storage.history_repo import HistoryRepo
 
         curl_cmd = build_curl(config)
+        self._last_curl = curl_cmd
         self.query_one(CurlPanel).update_curl(curl_cmd)
 
+        # Sending indicator (Ctrl+X cancels the exclusive worker).
+        self.query_one(ResponsePanel).query_one("#response-status").update("⏳ sending…")
+
         result = await send(config)
+        self._last_content = result.content
         self.query_one(ResponsePanel).show_result(result)
 
-        repo = HistoryRepo(DB_PATH)
         entry = HistoryEntry(
             id=0,
             timestamp=datetime.now().isoformat(timespec="seconds"),
@@ -114,6 +168,6 @@ class CurlCommanderApp(App):
             duration_ms=result.duration_ms,
             curl_cmd=curl_cmd,
         )
-        repo.save(entry)
+        self.repo.save(entry)
 
         self.query_one(HistoryPanel).refresh_history()

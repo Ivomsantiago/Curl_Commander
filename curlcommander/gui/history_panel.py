@@ -4,7 +4,6 @@ from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Button, DataTable, Label
 
-from curlcommander.config import DB_PATH
 from curlcommander.core.request_model import HistoryEntry
 
 
@@ -100,9 +99,7 @@ class HistoryPanel(Widget):
     # ------------------------------------------------------------------
 
     def refresh_history(self) -> None:
-        from curlcommander.storage.history_repo import HistoryRepo
-        repo = HistoryRepo(DB_PATH)
-        entries = repo.load()
+        entries = self.app.repo.load()
 
         self._entries = {str(e.id): e for e in entries}
         self._selected_id = None
@@ -126,7 +123,5 @@ class HistoryPanel(Widget):
     # ------------------------------------------------------------------
 
     def _delete_entry(self, entry_id: str) -> None:
-        from curlcommander.storage.history_repo import HistoryRepo
-        repo = HistoryRepo(DB_PATH)
-        repo.delete_by_id(int(entry_id))
+        self.app.repo.delete_by_id(int(entry_id))
         self.refresh_history()

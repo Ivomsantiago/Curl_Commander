@@ -1,8 +1,8 @@
+from rich.syntax import Syntax
 from textual.app import ComposeResult
 from textual.containers import ScrollableContainer
 from textual.widget import Widget
 from textual.widgets import Label, Static
-from rich.syntax import Syntax
 
 
 class CurlPanel(Widget):
