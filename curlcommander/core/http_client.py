@@ -5,6 +5,7 @@ import httpx
 
 from curlcommander.core.auth_handler import resolve_auth
 from curlcommander.core.request_model import RequestConfig, ResponseResult
+from curlcommander.core.response_formatter import decode_body
 
 
 async def send(config: RequestConfig) -> ResponseResult:
@@ -52,15 +53,17 @@ async def send(config: RequestConfig) -> ResponseResult:
                 )
 
             elapsed_ms = (time.perf_counter() - start) * 1000
+            content_type = response.headers.get("content-type", "")
             return ResponseResult(
                 status_code=response.status_code,
                 reason=response.reason_phrase,
                 headers=dict(response.headers),
-                body=response.text,
-                content_type=response.headers.get("content-type", ""),
+                body=decode_body(response.content, content_type),
+                content_type=content_type,
                 duration_ms=elapsed_ms,
                 size_bytes=len(response.content),
                 error=None,
+                content=response.content,
             )
         except httpx.RequestError as exc:
             attempt += 1

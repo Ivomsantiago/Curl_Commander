@@ -26,6 +26,7 @@ class RequestConfig:
     http2: bool = False
     output_path: str = ""
     pretty: bool = False
+    raw: bool = False         # disable pretty-printing / display formatting
     env_file: str = ""
     follow_redirects: bool = True
     verify_ssl: bool = True

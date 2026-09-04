@@ -8,7 +8,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from curlcommander.config import DB_PATH
+from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
@@ -159,15 +159,28 @@ def _execute_request(config: RequestConfig, repo: HistoryRepo, fail: bool = Fals
         header_table.add_row(k, v)
     _console.print(header_table)
 
-    if result.body:
-        body_text = result.body
-        if config.pretty or (config.pretty is False and "json" in result.content_type.lower()):
-            body_text = format_body(result.body, result.content_type)
-        _console.print(Syntax(body_text, get_lexer(result.content_type), theme="monokai", word_wrap=True))
+    # Save the full raw bytes first, independent of what we render (1.8).
+    if config.output_path:
+        Path(config.output_path).write_bytes(result.content)
+        _console.print(f"[green]Response body saved to[/green] [bold]{config.output_path}[/bold]")
 
-        if config.output_path:
-            Path(config.output_path).write_text(body_text, encoding="utf-8")
-            _console.print(f"[green]Response body saved to[/green] [bold]{config.output_path}[/bold]")
+    if result.body:
+        # JSON is pretty-printed automatically; --raw turns all formatting off (1.10).
+        body_text = result.body if config.raw else format_body(result.body, result.content_type)
+
+        # Truncate what we render so a huge payload can't freeze the terminal (1.9).
+        truncated = False
+        if len(body_text) > DISPLAY_LIMIT_BYTES:
+            body_text = body_text[:DISPLAY_LIMIT_BYTES]
+            truncated = True
+
+        _console.print(Syntax(body_text, get_lexer(result.content_type), theme="monokai", word_wrap=True))
+        if truncated:
+            hint = f" — full body saved to {config.output_path}" if config.output_path else " — use --output to save the full body"
+            _console.print(
+                f"[yellow]… output truncated at {DISPLAY_LIMIT_BYTES} bytes"
+                f" ({result.size_bytes} B total){hint}[/yellow]"
+            )
 
     _persist(config, result.status_code, result.duration_ms, curl_cmd, repo)
 
@@ -226,6 +239,7 @@ def _build_config(args) -> RequestConfig:
         http2=args.http2,
         output_path=args.output or "",
         pretty=args.pretty,
+        raw=getattr(args, "raw", False),
         env_file=args.env_file or "",
         follow_redirects=not args.no_redirect,
         verify_ssl=not args.no_verify,
