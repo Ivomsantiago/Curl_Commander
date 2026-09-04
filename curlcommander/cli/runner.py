@@ -10,6 +10,7 @@ from rich.table import Table
 from rich.text import Text
 
 from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
+from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
 from curlcommander.core.headers import HeaderList
@@ -27,6 +28,7 @@ _console = Console()
 EXIT_OK = 0
 EXIT_USAGE = 1        # usage / parse / not-found
 EXIT_NETWORK = 2      # network / DNS / TLS / timeout
+EXIT_ASSERT = 3       # one or more --assert-* checks failed
 EXIT_HTTP = 22        # --fail and HTTP status >= 400 (matches curl --fail)
 
 
@@ -163,8 +165,31 @@ def _run_request(args, repo: HistoryRepo) -> int:
         return EXIT_OK
 
     return _execute_request(
-        config, repo, fail=getattr(args, "fail", False), env_vars=env_vars, no_redact=no_redact
+        config, repo, fail=getattr(args, "fail", False), env_vars=env_vars, no_redact=no_redact,
+        assert_spec=_build_assert_spec(args), report_fmt=getattr(args, "report", None),
     )
+
+
+def _build_assert_spec(args) -> AssertionSpec:
+    return AssertionSpec(
+        status=getattr(args, "assert_status", None),
+        headers=getattr(args, "assert_headers", None) or None,
+        body_contains=getattr(args, "assert_body", None) or None,
+        jsonpaths=getattr(args, "assert_jsonpath", None) or None,
+        max_ms=getattr(args, "assert_max_ms", None),
+    )
+
+
+def _report_assertions(result, spec: AssertionSpec, report_fmt: str | None, url: str) -> bool:
+    """Print assertion outcomes; return True if all passed."""
+    results = run_assertions(result, spec)
+    if report_fmt:
+        print(format_report(results, report_fmt, url=url))
+    else:
+        for r in results:
+            mark = "[green]PASS[/green]" if r.passed else "[red]FAIL[/red]"
+            _console.print(f"{mark} {r.name}" + (f"  [dim]({r.detail})[/dim]" if r.detail else ""))
+    return all(r.passed for r in results)
 
 
 def _execute_request(
@@ -173,6 +198,8 @@ def _execute_request(
     fail: bool = False,
     env_vars: dict[str, str] | None = None,
     no_redact: bool = False,
+    assert_spec: AssertionSpec | None = None,
+    report_fmt: str | None = None,
 ) -> int:
     _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
 
@@ -220,6 +247,10 @@ def _execute_request(
             )
 
     _persist(config, result.status_code, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
+
+    if assert_spec is not None and not assert_spec.is_empty():
+        if not _report_assertions(result, assert_spec, report_fmt, config.url):
+            return EXIT_ASSERT
 
     if fail and result.status_code is not None and result.status_code >= 400:
         return EXIT_HTTP
