@@ -13,6 +13,7 @@ from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
 from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
+from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
@@ -170,6 +171,10 @@ def _run_request(args, repo: HistoryRepo) -> int:
         env_vars = _load_env_file(args.env_file) if args.env_file else {}
         config = _build_config(args, env_vars)
 
+    # Fuzzing (2B.3): a wordlist plus FUZZ markers in the request.
+    if getattr(args, "wordlists", None):
+        return _run_fuzz(config, args)
+
     if args.curl_only:
         curl_cmd = build_curl(config)
         _print_curl(curl_cmd)
@@ -181,6 +186,74 @@ def _run_request(args, repo: HistoryRepo) -> int:
         config, repo, fail=getattr(args, "fail", False), env_vars=env_vars, no_redact=no_redact,
         assert_spec=_build_assert_spec(args), report_fmt=getattr(args, "report", None),
     )
+
+
+def _run_fuzz(config: RequestConfig, args) -> int:
+    wordlists = [_load_wordlist(p) for p in args.wordlists]
+    if any(not wl for wl in wordlists):
+        _console.print("[red]Error:[/red] a wordlist is empty or unreadable.")
+        return EXIT_USAGE
+
+    markers = markers_for(len(wordlists))
+    present = find_markers(config, markers)
+    if not present:
+        _console.print(
+            f"[red]Error:[/red] no fuzz markers found. Place {', '.join(markers)} "
+            "in the URL, a header/param/cookie value, or the body."
+        )
+        return EXIT_USAGE
+
+    filters = FuzzFilters(
+        match_codes=_int_set(getattr(args, "mc", None)),
+        filter_codes=_int_set(getattr(args, "fc", None)),
+        match_size=getattr(args, "ms", None),
+        filter_size=getattr(args, "fs", None),
+        match_regex=getattr(args, "mr", None),
+    )
+    encoders = [e for e in (getattr(args, "encode", None) or "").split(",") if e] or None
+
+    results = asyncio.run(run_fuzz(
+        config, wordlists, mode=getattr(args, "fuzz_mode", "clusterbomb"),
+        filters=filters, concurrency=getattr(args, "concurrency", 10),
+        rate=getattr(args, "rate", 0.0), encoders=encoders,
+    ))
+
+    table = Table(title=f"Fuzz results ({len(results)} shown)")
+    table.add_column("Payload", overflow="fold")
+    table.add_column("Status", justify="center")
+    table.add_column("Size", justify="right")
+    table.add_column("ms", justify="right")
+    table.add_column("", justify="center")
+    for r in results:
+        style = _status_style(r.status_code)
+        table.add_row(
+            " / ".join(r.payloads),
+            f"[{style}]{r.status_code or 'ERR'}[/{style}]",
+            str(r.size_bytes),
+            f"{r.duration_ms:.0f}",
+            "[bold yellow]★[/bold yellow]" if r.anomaly else "",
+        )
+    _console.print(table)
+    return EXIT_OK
+
+
+def _load_wordlist(path: str) -> list[str]:
+    try:
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [line.strip() for line in text.splitlines() if line.strip() and not line.startswith("#")]
+
+
+def _int_set(value: str | None) -> set[int] | None:
+    if not value:
+        return None
+    out: set[int] = set()
+    for part in value.split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.add(int(part))
+    return out or None
 
 
 def _execute_raw_request(args, repo: HistoryRepo) -> int:
