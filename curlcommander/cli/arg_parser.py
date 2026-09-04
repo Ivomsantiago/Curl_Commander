@@ -24,6 +24,17 @@ def build_request_parser() -> argparse.ArgumentParser:
     imp.add_argument("--import-raw", metavar="PATH", help="Import a raw HTTP request block (Burp/.http)")
     imp.add_argument("--host", metavar="URL", help="Base host for --import-raw / --raw-request (e.g. https://target)")
 
+    api = parser.add_argument_group("API styles")
+    api.add_argument("--graphql", metavar="QUERY", help="Send a GraphQL query (POST JSON)")
+    api.add_argument("--graphql-vars", metavar="JSON", help="GraphQL variables as JSON")
+    api.add_argument("--graphql-introspection", action="store_true", help="Send introspection query and report if enabled")
+    api.add_argument("--xml", metavar="BODY|@FILE", help="Send an XML body (application/xml)")
+    api.add_argument("--soap", metavar="BODY|@FILE", help="Send a SOAP/XML body (text/xml)")
+    api.add_argument("--soap-action", metavar="URI", help="SOAPAction header value")
+    api.add_argument("--soap-envelope", action="store_true", help="Wrap --soap body in a SOAP envelope")
+    api.add_argument("--grpc-web", action="store_true", help="Set gRPC-web content-type (use --body-file for bytes)")
+    api.add_argument("--stream", action="store_true", help="Stream the response line by line (NDJSON/SSE)")
+
     raw = parser.add_argument_group("raw / pentest control")
     raw.add_argument("--raw-request", metavar="PATH", help="Send a raw HTTP block byte-for-byte over a socket")
     raw.add_argument("--raw-path", action="store_true", help="Send the URL path byte-faithful (no normalization)")

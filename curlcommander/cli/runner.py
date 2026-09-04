@@ -10,12 +10,21 @@ from rich.table import Table
 from rich.text import Text
 
 from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
+from curlcommander.core.api_styles import (
+    graphql_config,
+    graphql_field_names,
+    grpc_web_content_type,
+    introspection_config,
+    introspection_enabled,
+    soap_config,
+    xml_config,
+)
 from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
-from curlcommander.core.http_client import send
+from curlcommander.core.http_client import send, stream_send
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
 from curlcommander.core.raw_http import RawRequestError, parse_raw_request
 from curlcommander.core.raw_transport import (
@@ -171,6 +180,15 @@ def _run_request(args, repo: HistoryRepo) -> int:
         env_vars = _load_env_file(args.env_file) if args.env_file else {}
         config = _build_config(args, env_vars)
 
+    # API styles (2B.6): reshape the config for GraphQL / SOAP / XML / gRPC-web.
+    config = _apply_api_style(config, args)
+
+    if getattr(args, "graphql_introspection", False):
+        return _run_introspection(config)
+
+    if getattr(args, "stream", False):
+        return _run_stream(config)
+
     # Fuzzing (2B.3): a wordlist plus FUZZ markers in the request.
     if getattr(args, "wordlists", None):
         return _run_fuzz(config, args)
@@ -186,6 +204,58 @@ def _run_request(args, repo: HistoryRepo) -> int:
         config, repo, fail=getattr(args, "fail", False), env_vars=env_vars, no_redact=no_redact,
         assert_spec=_build_assert_spec(args), report_fmt=getattr(args, "report", None),
     )
+
+
+def _read_body_arg(value: str) -> str:
+    if value.startswith("@"):
+        return Path(value[1:]).read_text(encoding="utf-8")
+    return value
+
+
+def _apply_api_style(config: RequestConfig, args) -> RequestConfig:
+    if getattr(args, "graphql", None):
+        return graphql_config(config.url, args.graphql, getattr(args, "graphql_vars", None), config.headers)
+    if getattr(args, "graphql_introspection", False):
+        return introspection_config(config.url, config.headers)
+    if getattr(args, "soap", None):
+        return soap_config(
+            config.url, _read_body_arg(args.soap), action=getattr(args, "soap_action", None),
+            wrap_envelope=getattr(args, "soap_envelope", False), headers=config.headers,
+        )
+    if getattr(args, "xml", None):
+        return xml_config(config.url, _read_body_arg(args.xml), headers=config.headers)
+    if getattr(args, "grpc_web", False):
+        config.headers.setdefault("Content-Type", grpc_web_content_type())
+    return config
+
+
+def _run_introspection(config: RequestConfig) -> int:
+    _console.print(f"[dim]→ GraphQL introspection {config.url}[/dim]")
+    result = asyncio.run(send(config))
+    if result.error:
+        _console.print(f"[red bold]Error:[/red bold] {result.error}")
+        return EXIT_NETWORK
+    if introspection_enabled(result.body):
+        names = graphql_field_names(result.body)
+        _console.print(f"[red bold]Introspection ENABLED[/red bold] — {len(names)} types exposed")
+        _console.print("[dim]" + ", ".join(n for n in names if not n.startswith("__"))[:2000] + "[/dim]")
+    else:
+        _console.print("[green]Introspection appears disabled.[/green]")
+    return EXIT_OK
+
+
+def _run_stream(config: RequestConfig) -> int:
+    _console.print(f"[dim]→ streaming {config.method} {config.url}[/dim]")
+
+    def on_line(line: str) -> None:
+        _console.print(line, highlight=False)
+
+    result = asyncio.run(stream_send(config, on_line))
+    if result.error:
+        _console.print(f"[red bold]Error:[/red bold] {result.error}")
+        return EXIT_NETWORK
+    _console.print(f"[dim]{result.size_bytes} lines, {result.duration_ms:.0f} ms[/dim]")
+    return EXIT_OK
 
 
 def _run_fuzz(config: RequestConfig, args) -> int:

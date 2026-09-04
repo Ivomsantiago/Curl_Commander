@@ -10,6 +10,49 @@ from curlcommander.core.request_model import RequestConfig, ResponseResult
 from curlcommander.core.response_formatter import decode_body
 
 
+async def stream_send(config: RequestConfig, on_line):
+    """Stream a response line by line (NDJSON/SSE) without buffering it all.
+
+    Calls ``on_line(str)`` for each decoded line as it arrives. Returns a
+    ResponseResult with an empty body (content was streamed, not stored).
+    """
+    resolved = resolve_auth(config)
+    start = time.perf_counter()
+    proxy = resolved.proxy or None
+    try:
+        async with httpx.AsyncClient(
+            verify=resolved.verify_ssl,
+            follow_redirects=resolved.follow_redirects,
+            timeout=resolved.timeout,
+            http2=resolved.http2,
+            proxy=proxy,
+        ) as client:
+            async with client.stream(
+                resolved.method, resolved.url,
+                headers=resolved.headers.as_tuples(),
+                params=resolved.params.as_tuples(),
+                content=resolved.body.encode() if resolved.body else None,
+            ) as response:
+                count = 0
+                async for line in response.aiter_lines():
+                    on_line(line)
+                    count += 1
+                elapsed_ms = (time.perf_counter() - start) * 1000
+                return ResponseResult(
+                    status_code=response.status_code,
+                    reason=response.reason_phrase,
+                    headers=dict(response.headers),
+                    body="",
+                    content_type=response.headers.get("content-type", ""),
+                    duration_ms=elapsed_ms,
+                    size_bytes=count,
+                    error=None,
+                )
+    except httpx.RequestError as exc:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        return ResponseResult(None, "", {}, "", "", elapsed_ms, 0, str(exc))
+
+
 def _resolve_jar_path(config: RequestConfig) -> str:
     if config.session:
         return str(session_jar_path(config.session))
