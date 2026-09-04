@@ -33,11 +33,20 @@ class CurlCommanderApp(App):
     """
 
     BINDINGS = [
-        Binding("ctrl+enter", "send_request", "Send", show=True),
+        # Ctrl+Enter is unreliable across terminal emulators; Ctrl+S is the
+        # documented, portable primary. Ctrl+Enter kept as a bonus where it works.
+        Binding("ctrl+s", "send_request", "Send", show=True),
+        Binding("ctrl+enter", "send_request", "Send", show=False),
+        Binding("ctrl+y", "copy_curl", "Copy curl", show=True),
+        Binding("ctrl+x", "cancel_request", "Cancel", show=True),
         Binding("ctrl+l", "clear_form", "Clear Form", show=True),
         Binding("ctrl+h", "focus_history", "History", show=True),
-        Binding("q", "quit", "Quit", show=True),
+        # Ctrl+Q (not bare 'q', which conflicts with typing in inputs).
+        Binding("ctrl+q", "quit", "Quit", show=True),
     ]
+
+    _last_curl: str = ""
+    _last_content: bytes = b""
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -80,6 +89,34 @@ class CurlCommanderApp(App):
     def action_focus_history(self) -> None:
         self.query_one(HistoryPanel).focus()
 
+    def action_copy_curl(self) -> None:
+        from curlcommander.core.clipboard import ClipboardError, write_clipboard
+
+        if not self._last_curl:
+            self.notify("Nothing to copy yet.", severity="warning")
+            return
+        try:
+            write_clipboard(self._last_curl)
+            self.notify("curl copied to clipboard.")
+        except ClipboardError as exc:
+            self.notify(str(exc), severity="error")
+
+    def action_cancel_request(self) -> None:
+        self.workers.cancel_all()
+        self.query_one(ResponsePanel).query_one("#response-status").update("cancelled")
+
+    def on_button_pressed(self, event) -> None:
+        if event.button.id != "save-response-btn":
+            return
+        if not self._last_content:
+            self.notify("No response to save.", severity="warning")
+            return
+        from pathlib import Path
+
+        out = Path("curlcommander-response.bin")
+        out.write_bytes(self._last_content)
+        self.notify(f"Response saved to {out}")
+
     # ------------------------------------------------------------------
     # Message handlers
     # ------------------------------------------------------------------
@@ -90,6 +127,7 @@ class CurlCommanderApp(App):
     def on_request_panel_config_changed(self, event: RequestPanel.ConfigChanged) -> None:
         try:
             curl_cmd = build_curl(event.config)
+            self._last_curl = curl_cmd
             self.query_one(CurlPanel).update_curl(curl_cmd)
         except Exception:
             pass
@@ -112,9 +150,14 @@ class CurlCommanderApp(App):
         from datetime import datetime
 
         curl_cmd = build_curl(config)
+        self._last_curl = curl_cmd
         self.query_one(CurlPanel).update_curl(curl_cmd)
 
+        # Sending indicator (Ctrl+X cancels the exclusive worker).
+        self.query_one(ResponsePanel).query_one("#response-status").update("⏳ sending…")
+
         result = await send(config)
+        self._last_content = result.content
         self.query_one(ResponsePanel).show_result(result)
 
         entry = HistoryEntry(

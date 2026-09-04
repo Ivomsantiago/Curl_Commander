@@ -41,3 +41,31 @@ def read_clipboard() -> str:
     raise ClipboardError(
         "no clipboard tool available (install pyperclip, or xclip/xsel/wl-paste on Linux)"
     )
+
+
+def write_clipboard(text: str) -> None:
+    try:
+        import pyperclip  # type: ignore
+
+        pyperclip.copy(text)
+        return
+    except Exception:
+        pass
+
+    candidates: list[list[str]]
+    if sys.platform == "darwin":
+        candidates = [["pbcopy"]]
+    elif sys.platform == "win32":
+        candidates = [["clip"]]
+    else:
+        candidates = [["xclip", "-selection", "clipboard"], ["xsel", "-b", "-i"], ["wl-copy"]]
+
+    for cmd in candidates:
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.run(cmd, input=text, text=True, check=True)
+                return
+            except subprocess.SubprocessError:
+                continue
+
+    raise ClipboardError("no clipboard tool available to copy")

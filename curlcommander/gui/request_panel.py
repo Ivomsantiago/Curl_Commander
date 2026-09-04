@@ -2,12 +2,29 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.message import Message
 from textual.widget import Widget
-from textual.widgets import Button, Input, Label, Select, TextArea
+from textual.widgets import Button, Checkbox, Input, Label, Select, TextArea
+
+import os
 
 from curlcommander.config import AUTH_TYPES, BODY_TYPES, HTTP_METHODS
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.parsing import ParseError, parse_header, parse_param
+from curlcommander.core.redaction import reveal_text
 from curlcommander.core.request_model import RequestConfig
+
+
+def _to_int(value: str, default: int) -> int:
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _to_float(value: str, default: float) -> float:
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 
 class RequestPanel(Widget):
@@ -103,6 +120,15 @@ class RequestPanel(Widget):
             yield Label("Auth Value  (token / user:pass / Header: Value)")
             yield Input(placeholder="", id="auth-value-input")
 
+            yield Label("Options")
+            with Horizontal(id="options-row-1"):
+                yield Input(placeholder="proxy (http://127.0.0.1:8080)", id="proxy-input")
+                yield Input(placeholder="timeout", value="30", id="timeout-input")
+                yield Input(placeholder="retries", value="0", id="retries-input")
+            with Horizontal(id="options-row-2"):
+                yield Checkbox("Verify TLS", value=True, id="verify-checkbox")
+                yield Checkbox("Follow redirects", value=True, id="redirects-checkbox")
+
             with Horizontal(id="button-row"):
                 yield Button("Send", id="send-btn", variant="primary")
                 yield Button("Curl Only", id="curl-only-btn")
@@ -161,6 +187,14 @@ class RequestPanel(Widget):
         auth_type = self._select_value("auth-type-select", "none")
         auth_value = self.query_one("#auth-value-input", Input).value
 
+        # Resolve {{VAR}} references from the environment (2.13 env substitution).
+        env = dict(os.environ)
+        url = reveal_text(url, env)
+        body = reveal_text(body, env)
+        auth_value = reveal_text(auth_value, env)
+        headers = HeaderList([(k, reveal_text(v, env)) for k, v in headers])
+        params = HeaderList([(k, reveal_text(v, env)) for k, v in params])
+
         return RequestConfig(
             method=method,
             url=url,
@@ -170,6 +204,11 @@ class RequestPanel(Widget):
             body_type=body_type,
             auth_type=auth_type,
             auth_value=auth_value,
+            proxy=self.query_one("#proxy-input", Input).value.strip(),
+            max_retries=_to_int(self.query_one("#retries-input", Input).value, 0),
+            timeout=_to_float(self.query_one("#timeout-input", Input).value, 30.0),
+            verify_ssl=self.query_one("#verify-checkbox", Checkbox).value,
+            follow_redirects=self.query_one("#redirects-checkbox", Checkbox).value,
         )
 
     def set_config(self, config: RequestConfig) -> None:
@@ -192,6 +231,12 @@ class RequestPanel(Widget):
             self.query_one("#auth-type-select", Select).value = config.auth_type
         self.query_one("#auth-value-input", Input).value = config.auth_value
 
+        self.query_one("#proxy-input", Input).value = config.proxy
+        self.query_one("#timeout-input", Input).value = str(config.timeout)
+        self.query_one("#retries-input", Input).value = str(config.max_retries)
+        self.query_one("#verify-checkbox", Checkbox).value = config.verify_ssl
+        self.query_one("#redirects-checkbox", Checkbox).value = config.follow_redirects
+
     def clear_form(self) -> None:
         self.query_one("#method-select", Select).value = "GET"
         self.query_one("#url-input", Input).value = ""
@@ -201,6 +246,11 @@ class RequestPanel(Widget):
         self.query_one("#body-area", TextArea).load_text("")
         self.query_one("#auth-type-select", Select).value = "none"
         self.query_one("#auth-value-input", Input).value = ""
+        self.query_one("#proxy-input", Input).value = ""
+        self.query_one("#timeout-input", Input).value = "30"
+        self.query_one("#retries-input", Input).value = "0"
+        self.query_one("#verify-checkbox", Checkbox).value = True
+        self.query_one("#redirects-checkbox", Checkbox).value = True
 
     # ------------------------------------------------------------------
     # Private helpers
