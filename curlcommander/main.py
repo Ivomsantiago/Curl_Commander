@@ -20,7 +20,7 @@ def main() -> None:
         args.subcommand = None
 
     from curlcommander.cli.runner import run_cli
-    run_cli(args)
+    sys.exit(run_cli(args))
 
 
 if __name__ == "__main__":

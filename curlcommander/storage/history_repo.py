@@ -16,6 +16,15 @@ class HistoryRepo:
         self._conn = open_connection(db_path)
         init_schema(self._conn)
 
+    def close(self) -> None:
+        self._conn.close()
+
+    def __enter__(self) -> "HistoryRepo":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def save(self, entry: HistoryEntry) -> int:
         cursor = self._conn.execute(
             """

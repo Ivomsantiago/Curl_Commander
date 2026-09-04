@@ -1,9 +1,18 @@
 import argparse
+from typing import NoReturn
+
+
+class ArgParser(argparse.ArgumentParser):
+    """ArgumentParser that exits with code 1 (usage error) instead of 2."""
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage()
+        self.exit(1, f"{self.prog}: error: {message}\n")
 
 
 def build_request_parser() -> argparse.ArgumentParser:
     """Parser used when no subcommand is detected (request / wizard mode)."""
-    parser = argparse.ArgumentParser(
+    parser = ArgParser(
         prog="curlcmd",
         description="CurlCommander — visual HTTP request builder and curl generator",
     )
@@ -29,6 +38,7 @@ def build_request_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-redirect", action="store_true", help="Do not follow redirects")
     parser.add_argument("--no-verify", action="store_true", help="Disable SSL certificate verification")
     parser.add_argument("--timeout", type=float, default=30.0, metavar="SECONDS", help="Request timeout (default: 30)")
+    parser.add_argument("--fail", action="store_true", help="Exit 22 on HTTP status >= 400 (like curl --fail)")
     parser.add_argument("--curl-only", action="store_true", help="Print curl command without sending")
     parser.add_argument("--save", action="store_true", help="Save to history even with --curl-only")
     parser.add_argument("--gui", action="store_true", help="Launch the Textual TUI")
@@ -37,7 +47,7 @@ def build_request_parser() -> argparse.ArgumentParser:
 
 def build_subcommand_parser() -> argparse.ArgumentParser:
     """Parser used when a subcommand (history, replay, curl, clear-history) is detected."""
-    parser = argparse.ArgumentParser(
+    parser = ArgParser(
         prog="curlcmd",
         description="CurlCommander — subcommands",
     )

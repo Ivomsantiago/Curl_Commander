@@ -18,37 +18,46 @@ from curlcommander.storage.history_repo import HistoryRepo
 
 _console = Console()
 
+# Exit codes (curl-compatible where it matters).
+EXIT_OK = 0
+EXIT_USAGE = 1        # usage / parse / not-found
+EXIT_NETWORK = 2      # network / DNS / TLS / timeout
+EXIT_HTTP = 22        # --fail and HTTP status >= 400 (matches curl --fail)
 
-def run_cli(args) -> None:
+
+def run_cli(args) -> int:
     repo = HistoryRepo(DB_PATH)
-
-    match args.subcommand:
-        case "history":
-            _show_history(repo)
-        case "replay":
-            _replay(repo, args.id)
-        case "curl":
-            _show_curl_from_history(repo, args.id)
-        case "export-history":
-            _export_history(repo, args.output)
-        case "delete-history":
-            _delete_history(repo, args.id)
-        case "clear-history":
-            repo.clear()
-            _console.print("[green]History cleared.[/green]")
-        case _:
-            _run_request(args, repo)
+    try:
+        match args.subcommand:
+            case "history":
+                return _show_history(repo)
+            case "replay":
+                return _replay(repo, args.id)
+            case "curl":
+                return _show_curl_from_history(repo, args.id)
+            case "export-history":
+                return _export_history(repo, args.output)
+            case "delete-history":
+                return _delete_history(repo, args.id)
+            case "clear-history":
+                repo.clear()
+                _console.print("[green]History cleared.[/green]")
+                return EXIT_OK
+            case _:
+                return _run_request(args, repo)
+    finally:
+        repo.close()
 
 
 # ---------------------------------------------------------------------------
 # Subcommand handlers
 # ---------------------------------------------------------------------------
 
-def _show_history(repo: HistoryRepo) -> None:
+def _show_history(repo: HistoryRepo) -> int:
     entries = repo.load()
     if not entries:
         _console.print("[dim]No history entries.[/dim]")
-        return
+        return EXIT_OK
 
     table = Table(title="Request History", show_lines=False)
     table.add_column("ID", style="dim", justify="right")
@@ -70,42 +79,45 @@ def _show_history(repo: HistoryRepo) -> None:
         )
 
     _console.print(table)
+    return EXIT_OK
 
 
-def _replay(repo: HistoryRepo, id: int) -> None:
+def _replay(repo: HistoryRepo, id: int) -> int:
     entry = repo.get_by_id(id)
     if entry is None:
         _console.print(f"[red]No history entry with ID {id}.[/red]")
-        return
+        return EXIT_USAGE
 
     _console.print(f"[dim]Replaying #{id}…[/dim]")
-    _execute_request(entry.request, repo)
+    return _execute_request(entry.request, repo)
 
 
-def _show_curl_from_history(repo: HistoryRepo, id: int) -> None:
+def _show_curl_from_history(repo: HistoryRepo, id: int) -> int:
     entry = repo.get_by_id(id)
     if entry is None:
         _console.print(f"[red]No history entry with ID {id}.[/red]")
-        return
+        return EXIT_USAGE
 
     _print_curl(entry.curl_cmd)
+    return EXIT_OK
 
 
-def _export_history(repo: HistoryRepo, output: str) -> None:
+def _export_history(repo: HistoryRepo, output: str) -> int:
     repo.export_json(output)
     _console.print(f"[green]History exported to[/green] [bold]{output}[/bold]")
+    return EXIT_OK
 
 
 # ---------------------------------------------------------------------------
 # Request execution
 # ---------------------------------------------------------------------------
 
-def _run_request(args, repo: HistoryRepo) -> None:
+def _run_request(args, repo: HistoryRepo) -> int:
     if not args.url:
         from curlcommander.cli.wizard import run_wizard
         config = run_wizard()
         if config is None:
-            return
+            return EXIT_OK
     else:
         config = _build_config(args)
 
@@ -114,12 +126,12 @@ def _run_request(args, repo: HistoryRepo) -> None:
         _print_curl(curl_cmd)
         if args.save:
             _persist(config, None, 0.0, curl_cmd, repo)
-        return
+        return EXIT_OK
 
-    _execute_request(config, repo)
+    return _execute_request(config, repo, fail=getattr(args, "fail", False))
 
 
-def _execute_request(config: RequestConfig, repo: HistoryRepo) -> None:
+def _execute_request(config: RequestConfig, repo: HistoryRepo, fail: bool = False) -> int:
     curl_cmd = build_curl(config)
     _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
 
@@ -128,7 +140,7 @@ def _execute_request(config: RequestConfig, repo: HistoryRepo) -> None:
     if result.error:
         _console.print(f"[red bold]Error:[/red bold] {result.error}")
         _persist(config, None, result.duration_ms, curl_cmd, repo)
-        return
+        return EXIT_NETWORK
 
     style = _status_style(result.status_code)
     status_line = Text()
@@ -154,6 +166,10 @@ def _execute_request(config: RequestConfig, repo: HistoryRepo) -> None:
             _console.print(f"[green]Response body saved to[/green] [bold]{config.output_path}[/bold]")
 
     _persist(config, result.status_code, result.duration_ms, curl_cmd, repo)
+
+    if fail and result.status_code is not None and result.status_code >= 400:
+        return EXIT_HTTP
+    return EXIT_OK
 
 
 # ---------------------------------------------------------------------------
@@ -244,13 +260,14 @@ def _print_curl(curl_cmd: str) -> None:
     _console.print(Syntax(curl_cmd, "bash", theme="monokai", word_wrap=True))
 
 
-def _delete_history(repo: HistoryRepo, id: int) -> None:
+def _delete_history(repo: HistoryRepo, id: int) -> int:
     entry = repo.get_by_id(id)
     if entry is None:
         _console.print(f"[red]No history entry with ID {id}.[/red]")
-        return
+        return EXIT_USAGE
     repo.delete_by_id(id)
     _console.print(f"[green]Deleted history entry {id}.[/green]")
+    return EXIT_OK
 
 
 def _load_env_file(path: str) -> dict[str, str]:
