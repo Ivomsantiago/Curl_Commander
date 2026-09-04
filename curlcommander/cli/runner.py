@@ -19,7 +19,9 @@ from curlcommander.core.api_styles import (
     soap_config,
     xml_config,
 )
+from curlcommander.core import scope
 from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
+from curlcommander.core.evidence import compose_raw_response, save_evidence
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
@@ -69,6 +71,9 @@ def run_cli(args) -> int:
                 return EXIT_OK
             case _:
                 return _run_request(args, repo)
+    except scope.ScopeError as exc:
+        _console.print(f"[red bold]Refused:[/red bold] {exc}")
+        return EXIT_USAGE
     except RawTransportError as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_NETWORK
@@ -183,6 +188,18 @@ def _run_request(args, repo: HistoryRepo) -> int:
     # API styles (2B.6): reshape the config for GraphQL / SOAP / XML / gRPC-web.
     config = _apply_api_style(config, args)
 
+    # Scope allowlist enforcement (2B.8): refuse out-of-scope targets.
+    if getattr(args, "scope", None):
+        scope.enforce(config.url, scope.load_scope(args.scope))
+
+    # Dry run (2B.8): show the wire bytes without sending.
+    if getattr(args, "dry_run", False):
+        raw = serialize_request(config, no_default_headers=config.no_default_headers)
+        _console.print("[dim]--- would send (dry-run) ---[/dim]")
+        _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
+        _print_curl(build_curl(config))
+        return EXIT_OK
+
     if getattr(args, "graphql_introspection", False):
         return _run_introspection(config)
 
@@ -203,6 +220,7 @@ def _run_request(args, repo: HistoryRepo) -> int:
     return _execute_request(
         config, repo, fail=getattr(args, "fail", False), env_vars=env_vars, no_redact=no_redact,
         assert_spec=_build_assert_spec(args), report_fmt=getattr(args, "report", None),
+        evidence_dir=getattr(args, "evidence", None), engagement=getattr(args, "engagement", None),
     )
 
 
@@ -336,11 +354,18 @@ def _execute_raw_request(args, repo: HistoryRepo) -> int:
     else:
         host, port, use_tls = _target_from_raw(raw)
 
+    if getattr(args, "scope", None):
+        scope.enforce(host, scope.load_scope(args.scope))
+
     verify = not getattr(args, "no_verify", False)
     timeout = getattr(args, "timeout", 30.0)
 
     _console.print("[dim]--- raw request ---[/dim]")
     _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
+
+    if getattr(args, "dry_run", False):
+        _console.print("[dim](dry-run: not sent)[/dim]")
+        return EXIT_OK
 
     result = send_raw_request(raw, host, port, use_tls, verify, timeout)
     if result.error:
@@ -396,7 +421,12 @@ def _execute_request(
     no_redact: bool = False,
     assert_spec: AssertionSpec | None = None,
     report_fmt: str | None = None,
+    evidence_dir: str | None = None,
+    engagement: str | None = None,
 ) -> int:
+    if not config.verify_ssl:
+        _console.print("[yellow]warning: TLS verification disabled (--no-verify)[/yellow]")
+
     _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
 
     if config.raw_path:
@@ -451,6 +481,13 @@ def _execute_request(
             )
 
     _persist(config, result.status_code, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
+
+    if evidence_dir:
+        raw_req = serialize_request(config, no_default_headers=config.no_default_headers)
+        folder = save_evidence(
+            evidence_dir, config, raw_req, compose_raw_response(result), result, engagement=engagement,
+        )
+        _console.print(f"[green]Evidence saved to[/green] [bold]{folder}[/bold]")
 
     if assert_spec is not None and not assert_spec.is_empty():
         if not _report_assertions(result, assert_spec, report_fmt, config.url):

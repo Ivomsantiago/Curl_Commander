@@ -40,6 +40,12 @@ def build_request_parser() -> argparse.ArgumentParser:
     raw.add_argument("--raw-path", action="store_true", help="Send the URL path byte-faithful (no normalization)")
     raw.add_argument("--no-default-headers", action="store_true", help="Do not send httpx default headers (UA/Accept/...)")
 
+    opsec = parser.add_argument_group("operational safety")
+    opsec.add_argument("--scope", metavar="PATH", help="Allowlist of in-scope hosts/CIDRs; refuse out-of-scope targets")
+    opsec.add_argument("--dry-run", action="store_true", help="Show what would be sent on the wire without sending")
+    opsec.add_argument("--evidence", metavar="DIR", help="Save raw request+response+metadata to DIR")
+    opsec.add_argument("--engagement", metavar="LABEL", help="Authorization/engagement label for evidence")
+
     fuzz = parser.add_argument_group("fuzzing")
     fuzz.add_argument("-w", "--wordlist", action="append", dest="wordlists", default=[], metavar="PATH", help="Wordlist for FUZZ markers (repeatable)")
     fuzz.add_argument("--fuzz-mode", choices=["clusterbomb", "pitchfork"], default="clusterbomb", help="Multi-wordlist mode")
