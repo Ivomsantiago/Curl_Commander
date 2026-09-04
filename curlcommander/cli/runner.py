@@ -17,6 +17,12 @@ from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
 from curlcommander.core.raw_http import RawRequestError, parse_raw_request
+from curlcommander.core.raw_transport import (
+    RawTransportError,
+    send_raw_request,
+    serialize_request,
+    target_from_url,
+)
 from curlcommander.core.redaction import has_redacted, redact_config, reveal_config, reveal_text
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.core.response_formatter import format_body, get_lexer
@@ -53,6 +59,9 @@ def run_cli(args) -> int:
                 return EXIT_OK
             case _:
                 return _run_request(args, repo)
+    except RawTransportError as exc:
+        _console.print(f"[red bold]Error:[/red bold] {exc}")
+        return EXIT_NETWORK
     except (ParseError, CurlParseError, RawRequestError, FileNotFoundError) as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_USAGE
@@ -144,6 +153,10 @@ def _run_request(args, repo: HistoryRepo) -> int:
         _console.print(
             "[yellow]warning: --no-redact stores credentials in clear text in the history DB[/yellow]",
         )
+    # Raw byte-level path (2B.2): a raw request file, sent over a socket as-is.
+    if getattr(args, "raw_request", None):
+        return _execute_raw_request(args, repo)
+
     env_vars: dict[str, str] = {}
     imported = _maybe_import(args)
     if imported is not None:
@@ -168,6 +181,46 @@ def _run_request(args, repo: HistoryRepo) -> int:
         config, repo, fail=getattr(args, "fail", False), env_vars=env_vars, no_redact=no_redact,
         assert_spec=_build_assert_spec(args), report_fmt=getattr(args, "report", None),
     )
+
+
+def _execute_raw_request(args, repo: HistoryRepo) -> int:
+    """Send a raw HTTP request block byte-for-byte over a socket (2B.2)."""
+    raw = Path(args.raw_request).read_bytes()
+
+    host_arg = getattr(args, "host", None)
+    if host_arg:
+        host, port, use_tls = target_from_url(host_arg)
+    else:
+        host, port, use_tls = _target_from_raw(raw)
+
+    verify = not getattr(args, "no_verify", False)
+    timeout = getattr(args, "timeout", 30.0)
+
+    _console.print("[dim]--- raw request ---[/dim]")
+    _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
+
+    result = send_raw_request(raw, host, port, use_tls, verify, timeout)
+    if result.error:
+        _console.print(f"[red bold]Error:[/red bold] {result.error}")
+        return EXIT_NETWORK
+
+    _console.print("[dim]--- raw response ---[/dim]")
+    _console.print(result.content.decode("latin-1", errors="replace"), highlight=False)
+
+    # Persist a best-effort config view for history.
+    try:
+        cfg = parse_raw_request(raw.decode("latin-1", errors="replace"), host=host_arg)
+        _persist(cfg, result.status_code, result.duration_ms, repo)
+    except (RawRequestError, ValueError):
+        pass
+    return EXIT_OK
+
+
+def _target_from_raw(raw: bytes) -> tuple[str, int, bool]:
+    for line in raw.split(b"\r\n")[1:]:
+        if line.lower().startswith(b"host:"):
+            return target_from_url(line.split(b":", 1)[1].strip().decode("latin-1"))
+    raise RawTransportError("no --host and no Host header; cannot route raw request")
 
 
 def _build_assert_spec(args) -> AssertionSpec:
@@ -203,7 +256,15 @@ def _execute_request(
 ) -> int:
     _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
 
-    result = asyncio.run(send(config))
+    if config.raw_path:
+        # Byte-faithful request line via the raw socket transport (2B.1).
+        host, port, use_tls = target_from_url(config.url)
+        raw = serialize_request(config, no_default_headers=config.no_default_headers)
+        _console.print("[dim]--- raw request ---[/dim]")
+        _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
+        result = send_raw_request(raw, host, port, use_tls, config.verify_ssl, config.timeout)
+    else:
+        result = asyncio.run(send(config))
 
     if result.error:
         _console.print(f"[red bold]Error:[/red bold] {result.error}")
@@ -324,6 +385,8 @@ def _build_config(args, env_vars: dict[str, str] | None = None) -> RequestConfig
         params=params,
         cookies=cookies,
         form=form,
+        no_default_headers=getattr(args, "no_default_headers", False),
+        raw_path=getattr(args, "raw_path", False),
         cookie_jar=getattr(args, "cookie_jar", None) or "",
         session=getattr(args, "session", None) or "",
         body=body,

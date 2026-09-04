@@ -64,6 +64,10 @@ async def send(config: RequestConfig) -> ResponseResult:
                 proxy=proxy,
                 cookies=cookies,
             ) as client:
+                if resolved.no_default_headers:
+                    # Drop httpx's automatic headers so they don't pollute the
+                    # target's fingerprint; the user's own headers still apply.
+                    client.headers.clear()
                 response = await client.request(
                     method=resolved.method,
                     url=resolved.url,

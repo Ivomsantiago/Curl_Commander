@@ -35,6 +35,11 @@ class RequestConfig:
     follow_redirects: bool = True
     verify_ssl: bool = True
     timeout: float = 30.0
+    # Pentest / raw-control options (Phase 2B).
+    no_default_headers: bool = False  # strip httpx default UA/Accept/Encoding/Connection
+    raw_path: bool = False            # send URL path byte-faithful via raw socket
+    raw_request: str = ""             # path to a raw HTTP request block to send as-is
+    scope_file: str = ""              # allowlist of in-scope hosts/CIDRs
 
     def __post_init__(self) -> None:
         # Accept dict / list-of-pairs / HeaderList for ergonomics and back-compat.
