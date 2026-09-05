@@ -26,6 +26,25 @@ back to a local `.venv`, and only touches the system Python with
 Optional extras: `pip install "curlcommander[socks]"` (SOCKS proxy),
 `"[clipboard]"` (pyperclip). Run `curlcmd --version` to verify.
 
+### Standalone binary (no Python required)
+
+Download `curlcmd` / `curlcmd.exe` for your OS from the
+[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases) page, verify
+the checksum against `SHA256SUMS`, and run it directly:
+
+```bash
+chmod +x curlcmd && ./curlcmd --version          # Linux/macOS
+.\curlcmd.exe --version                           # Windows (PowerShell)
+```
+
+Build it yourself with `pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
+(output in `dist/`). A single-file `curlcmd.pyz` (needs Python, no install) is
+also available via `pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
+
+> **Antivirus note.** PyInstaller binaries occasionally trigger a false positive
+> on Windows Defender/SmartScreen. Verify the published SHA256, or install via
+> `pipx`/`pip` instead if your environment blocks unsigned binaries.
+
 ---
 
 ## 2. Security

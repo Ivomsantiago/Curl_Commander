@@ -6,6 +6,17 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased] — Portability & packaging
 
+### Packaging
+- **F2.1** Standalone single-file executable via PyInstaller
+  (`packaging/curlcmd.spec`, `[build-exe]` extra): bundles the payload data
+  files, Textual/httpx/rich hidden imports, and a certifi CA store (runtime
+  hook sets `SSL_CERT_FILE`) so TLS works in the frozen binary. `curlcmd.exe`
+  on Windows, `curlcmd` on Linux/macOS. `python -m curlcommander` entry added.
+- **F2.2** Optional `curlcmd.pyz` via shiv/zipapp (`[build-pyz]` extra) for
+  users who have Python but want a single file without installing.
+- **F2.3** Symbols stripped where supported, tkinter/test modules excluded;
+  README documents the antivirus false-positive caveat and the SHA256 check.
+
 ### Portability fixes
 - **F1.1** Raw requests are read byte-for-byte from disk (`read_bytes`, no
   universal-newline translation) and `parse_raw_request_bytes` preserves the
