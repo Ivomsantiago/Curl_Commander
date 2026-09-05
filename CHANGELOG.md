@@ -17,6 +17,14 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - **F2.3** Symbols stripped where supported, tkinter/test modules excluded;
   README documents the antivirus false-positive caveat and the SHA256 check.
 
+### Release CI/CD
+- **F4.1/F4.2** `.github/workflows/release.yml` on `v*` tags: runs the CI suite
+  as a gate, builds the standalone binary on Linux / Windows / macOS-x86_64 /
+  macOS-arm64, **smoke-tests the frozen binary on each OS**, publishes the
+  binaries plus a combined `SHA256SUMS` to the GitHub Release, and publishes the
+  wheel + sdist to PyPI via OIDC trusted publishing. `ci.yml` gained a
+  `workflow_call` trigger so it can be reused as that gate.
+
 ### Distribution
 - **F3.1** `install.ps1` for Windows mirroring `install.sh` (uv tool → pipx →
   local `.venv`, `-System` behind confirmation, `-Help`).
