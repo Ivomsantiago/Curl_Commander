@@ -1,0 +1,29 @@
+# Curated category -> source files map, so users ask by intent ("xss") instead
+# of by path. `builtin` names an embedded data/payloads/<name>.txt; the other
+# keys are glob patterns relative to that synced source's root.
+categories:
+  xss:
+    builtin: [xss]
+    seclists: ["Fuzzing/XSS/**/*.txt"]
+    payloadsallthethings: ["XSS Injection/Intruders/*.txt"]
+  sqli:
+    builtin: [sqli]
+    seclists: ["Fuzzing/SQLi/**/*.txt"]
+    payloadsallthethings: ["SQL Injection/Intruder/*.txt"]
+  ssti:
+    builtin: [ssti]
+    payloadsallthethings: ["Server Side Template Injection/Intruder/*.txt"]
+  lfi:
+    seclists: ["Fuzzing/LFI/*.txt"]
+    payloadsallthethings: ["File Inclusion/Intruders/*.txt"]
+  traversal:
+    builtin: [traversal]
+    seclists: ["Fuzzing/LFI/*.txt"]
+  ssrf:
+    payloadsallthethings: ["Server Side Request Forgery/Intruder/*.txt"]
+  cmdi:
+    builtin: [cmdi]
+    seclists: ["Fuzzing/command-injection-commix.txt"]
+    payloadsallthethings: ["Command Injection/Intruder/*.txt"]
+  redirect:
+    payloadsallthethings: ["Open Redirect/Intruder/*.txt"]

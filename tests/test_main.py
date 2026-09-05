@@ -9,7 +9,7 @@ from curlcommander.cli.arg_parser import SUBCOMMANDS, build_request_parser, buil
 
 
 def test_subcommands_frozenset():
-    assert SUBCOMMANDS == frozenset({"history", "replay", "curl", "export-history", "delete-history", "clear-history"})
+    assert {"history", "replay", "curl", "export-history", "delete-history", "clear-history"} <= SUBCOMMANDS
 
 
 def test_positional_url_is_not_a_subcommand():

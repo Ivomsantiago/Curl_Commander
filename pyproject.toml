@@ -32,6 +32,7 @@ dependencies = [
     "prompt_toolkit>=3.0",
     "textual>=0.60",
     "platformdirs>=3.0",
+    "pyyaml>=6.0",
 ]
 
 [project.urls]
@@ -54,6 +55,8 @@ socks = ["httpx[socks]"]
 clipboard = ["pyperclip"]
 build-exe = ["pyinstaller>=6.0", "certifi"]
 build-pyz = ["shiv"]
+browser = ["playwright>=1.40"]
+proxy = ["mitmproxy>=10.0"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"
@@ -81,7 +84,7 @@ warn_unused_ignores = false
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["httpx.*"]
+module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*"]
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
@@ -90,4 +93,13 @@ packages = ["curlcommander"]
 
 [tool.coverage.run]
 source = ["curlcommander"]
-omit = ["curlcommander/gui/*"]
+omit = [
+    "curlcommander/gui/*",
+    # Browser-gated modules: require the optional [browser] extra + a real
+    # Chromium, covered by the dedicated `browser` CI job, not the base gate.
+    "curlcommander/core/browser.py",
+    "curlcommander/core/validators/xss.py",
+    "curlcommander/core/validators/clickjacking.py",
+    "curlcommander/core/validators/csrf.py",
+    "curlcommander/core/proxy.py",
+]

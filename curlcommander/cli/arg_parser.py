@@ -72,8 +72,16 @@ def build_request_parser() -> argparse.ArgumentParser:
         action="append",
         dest="payloads",
         default=[],
-        metavar="NAME",
-        help="Built-in payload set (sqli/xss/ssti/traversal/cmdi)",
+        metavar="CAT",
+        help="Payload category via the catalog (xss/sqli/ssti/lfi/ssrf/...)",
+    )
+    fuzz.add_argument(
+        "--payloads-all",
+        action="append",
+        dest="payloads_all",
+        default=[],
+        metavar="CAT",
+        help="Payload category from ALL synced sources, deduped",
     )
     fuzz.add_argument(
         "--fuzz-mode", choices=["clusterbomb", "pitchfork"], default="clusterbomb", help="Multi-wordlist mode"
@@ -200,9 +208,94 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("clear-history", help="Clear all history")
 
+    # payloads sync / update / list / search / show
+    payloads_p = subparsers.add_parser("payloads", help="Manage payload sources and catalog")
+    p_sub = payloads_p.add_subparsers(dest="payloads_cmd", required=True)
+    p_sync = p_sub.add_parser("sync", help="Clone/update a payload source")
+    p_sync.add_argument("source", nargs="?", help="Source name (default: all)")
+    p_sub.add_parser("update", help="Update all synced sources")
+    p_list = p_sub.add_parser("list", help="List catalog categories / synced sources")
+    p_list.add_argument("--category", metavar="CAT", help="List files backing a category")
+    p_search = p_sub.add_parser("search", help="Search wordlist filenames")
+    p_search.add_argument("term", help="Substring to search for")
+    p_show = p_sub.add_parser("show", help="Preview a category's payloads")
+    p_show.add_argument("category", help="Category name")
+    p_show.add_argument("--limit", type=int, default=20, help="Max lines to show")
+    p_show.add_argument("--count", action="store_true", help="Only print the total count")
+    p_show.add_argument("--all", action="store_true", dest="all_sources", help="Use all synced sources")
+
+    # discover (content discovery via the fuzz engine)
+    disc = subparsers.add_parser("discover", help="Content discovery / dirbusting against a URL")
+    disc.add_argument("url", help="Base URL")
+    disc.add_argument("-w", "--wordlist", action="append", dest="wordlists", default=[], metavar="SPEC")
+    disc.add_argument("--payloads", action="append", dest="payloads", default=[], metavar="CAT")
+    disc.add_argument("-e", "--extensions", metavar="EXT", help="Comma-separated extensions (php,bak,old)")
+    disc.add_argument("--recurse", type=int, default=0, metavar="DEPTH", help="Shallow recursion depth")
+    disc.add_argument("--concurrency", type=int, default=20, metavar="N")
+    disc.add_argument("--rate", type=float, default=0.0, metavar="R")
+    disc.add_argument("--mc", metavar="CODES")
+    disc.add_argument("--fc", metavar="CODES", default="404")
+    disc.add_argument("--ms", type=int, metavar="N")
+    disc.add_argument("--fs", type=int, metavar="N")
+    disc.add_argument("--mr", metavar="REGEX")
+    disc.add_argument("--scope", metavar="PATH")
+    disc.add_argument("--no-verify", action="store_true")
+    disc.add_argument("--timeout", type=float, default=30.0)
+
+    # proxy (intercepting HTTPS proxy with its own CA)
+    prox = subparsers.add_parser("proxy", help="Run an intercepting HTTPS proxy (mitmproxy)")
+    prox.add_argument("--port", type=int, default=8080)
+    prox.add_argument("--scope", metavar="PATH", help="Only intercept in-scope hosts; tunnel the rest")
+    prox.add_argument("--engagement", metavar="LABEL", help="Authorization label (required)")
+    prox.add_argument(
+        "--replace",
+        action="append",
+        dest="replace",
+        default=[],
+        metavar="RULE",
+        help="Match-and-replace: [req|resp:]pattern==>replacement (repeatable)",
+    )
+    prox.add_argument("--launch-browser", action="store_true", help="Open Chromium routed through the proxy")
+    prox.add_argument("--ca", action="store_true", help="Print the CA path + install/removal guidance and exit")
+
+    # validate (browser-executed / HTTP vulnerability validators)
+    val = subparsers.add_parser("validate", help="Validate a vulnerability (browser/HTTP)")
+    val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf"])
+    val.add_argument("url", help="Target URL (use §PAYLOAD§/§DEST§ markers where relevant)")
+    val.add_argument("--engagement", metavar="LABEL", help="Authorization label (required)")
+    val.add_argument("--scope", metavar="PATH")
+    val.add_argument("--origin", metavar="ORIGIN", default="https://evil.example", help="CORS attacker origin")
+    val.add_argument("--headed", action="store_true", help="Show the browser window")
+    val.add_argument("--evidence", metavar="DIR", help="Save screenshot/DOM/HAR here")
+    val.add_argument("--no-verify", action="store_true")
+    val.add_argument("--timeout", type=float, default=30.0)
+
+    # bounty-scan (discover + per-category fuzz, consolidated by severity)
+    bounty = subparsers.add_parser("bounty-scan", help="Chained discovery + payload fuzz profile")
+    bounty.add_argument("url", help="Target URL")
+    bounty.add_argument("--scope", metavar="PATH")
+    bounty.add_argument("--engagement", metavar="LABEL", help="Authorization label (required)")
+    bounty.add_argument("--categories", metavar="LIST", default="xss,sqli,traversal,ssti")
+    bounty.add_argument("--concurrency", type=int, default=10)
+    bounty.add_argument("--rate", type=float, default=0.0)
+    bounty.add_argument("--no-verify", action="store_true")
+    bounty.add_argument("--timeout", type=float, default=30.0)
+
     return parser
 
 
 SUBCOMMANDS: frozenset[str] = frozenset(
-    {"history", "replay", "curl", "export-history", "delete-history", "clear-history"}
+    {
+        "history",
+        "replay",
+        "curl",
+        "export-history",
+        "delete-history",
+        "clear-history",
+        "payloads",
+        "discover",
+        "bounty-scan",
+        "validate",
+        "proxy",
+    }
 )

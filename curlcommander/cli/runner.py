@@ -10,7 +10,7 @@ from rich.table import Table
 from rich.text import Text
 
 from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
-from curlcommander.core import payloads, scope
+from curlcommander.core import payload_catalog, payload_sources, scope
 from curlcommander.core.api_styles import (
     graphql_config,
     graphql_field_names,
@@ -23,6 +23,13 @@ from curlcommander.core.api_styles import (
 from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
+from curlcommander.core.discovery import (
+    BountyReport,
+    Candidate,
+    category_fuzz,
+    discover,
+    severity_of,
+)
 from curlcommander.core.evidence import compose_raw_response, save_evidence
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
@@ -73,6 +80,16 @@ def run_cli(args) -> int:
                 repo.clear()
                 _console.print("[green]History cleared.[/green]")
                 return EXIT_OK
+            case "payloads":
+                return _run_payloads(args)
+            case "discover":
+                return _run_discover(args)
+            case "bounty-scan":
+                return _run_bounty_scan(args)
+            case "validate":
+                return _run_validate(args)
+            case "proxy":
+                return _run_proxy(args, repo)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -221,7 +238,7 @@ def _run_request(args, repo: HistoryRepo) -> int:
         return _run_stream(config)
 
     # Fuzzing (2B.3): a wordlist / built-in payload set plus FUZZ markers.
-    if getattr(args, "wordlists", None) or getattr(args, "payloads", None):
+    if getattr(args, "wordlists", None) or getattr(args, "payloads", None) or getattr(args, "payloads_all", None):
         return _run_fuzz(config, args)
 
     if args.curl_only:
@@ -299,14 +316,24 @@ def _run_stream(config: RequestConfig) -> int:
     return EXIT_OK
 
 
+def _resolve_fuzz_wordlists(args) -> list[list[str]]:
+    """Resolve -w specs and --payloads/--payloads-all categories via the catalog."""
+    wordlists: list[list[str]] = []
+    for spec in getattr(args, "wordlists", []) or []:
+        wordlists.append(payload_catalog.resolve_spec(spec))
+    for cat in getattr(args, "payloads", []) or []:
+        wordlists.append(payload_catalog.load_category(cat, all_sources=False))
+    for cat in getattr(args, "payloads_all", []) or []:
+        wordlists.append(payload_catalog.load_category(cat, all_sources=True))
+    return wordlists
+
+
 def _run_fuzz(config: RequestConfig, args) -> int:
-    wordlists = [_load_wordlist(p) for p in getattr(args, "wordlists", [])]
-    for name in getattr(args, "payloads", []) or []:
-        try:
-            wordlists.append(payloads.load(name))
-        except KeyError as exc:
-            _console.print(f"[red]Error:[/red] {exc}")
-            return EXIT_USAGE
+    try:
+        wordlists = _resolve_fuzz_wordlists(args)
+    except payload_catalog.CatalogError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        return EXIT_USAGE
     if not wordlists or any(not wl for wl in wordlists):
         _console.print("[red]Error:[/red] a wordlist/payload set is empty or unreadable.")
         return EXIT_USAGE
@@ -360,12 +387,324 @@ def _run_fuzz(config: RequestConfig, args) -> int:
     return EXIT_OK
 
 
-def _load_wordlist(path: str) -> list[str]:
+def _run_payloads(args) -> int:
+    """`curlcmd payloads sync|update|list|search|show` (G.1-G.3)."""
+    cmd = getattr(args, "payloads_cmd", None)
+    if cmd == "sync":
+        name = getattr(args, "source", None)
+        try:
+            names = [name] if name else list(payload_sources.load_sources())
+            for n in names:
+                dest = payload_sources.sync(n)
+                _console.print(f"[green]synced[/green] {n} → {dest}")
+        except payload_sources.PayloadSourceError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+        return EXIT_OK
+    if cmd == "update":
+        try:
+            for dest in payload_sources.update():
+                _console.print(f"[green]updated[/green] {dest}")
+        except payload_sources.PayloadSourceError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+        return EXIT_OK
+    if cmd == "list":
+        category = getattr(args, "category", None)
+        if category:
+            try:
+                files = payload_catalog.category_files(category, all_sources=True)
+            except payload_catalog.CatalogError as exc:
+                _console.print(f"[red]Error:[/red] {exc}")
+                return EXIT_USAGE
+            for f in files:
+                _console.print(str(f))
+        else:
+            _console.print("[bold]Categories:[/bold] " + ", ".join(payload_catalog.categories()))
+            avail = [n for n in payload_sources.load_sources() if payload_sources.is_available(n)]
+            _console.print(
+                "[bold]Synced sources:[/bold] " + (", ".join(avail) or "(none — run: curlcmd payloads sync)")
+            )
+        return EXIT_OK
+    if cmd == "search":
+        hits = payload_catalog.search(args.term)
+        for h in hits:
+            _console.print(h)
+        if not hits:
+            _console.print("[dim]no matches[/dim]")
+        return EXIT_OK
+    if cmd == "show":
+        try:
+            lines = payload_catalog.load_category(args.category, all_sources=getattr(args, "all_sources", False))
+        except payload_catalog.CatalogError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+        if getattr(args, "count", False):
+            _console.print(str(len(lines)))
+        else:
+            for line in lines[: args.limit]:
+                _console.print(line, highlight=False)
+            if len(lines) > args.limit:
+                _console.print(f"[dim]… {len(lines) - args.limit} more (total {len(lines)})[/dim]")
+        return EXIT_OK
+    _console.print("[red]Error:[/red] unknown payloads subcommand")
+    return EXIT_USAGE
+
+
+def _discover_filters(args) -> FuzzFilters:
+    return FuzzFilters(
+        match_codes=_int_set(getattr(args, "mc", None)),
+        filter_codes=_int_set(getattr(args, "fc", None)) or {404},
+        match_size=getattr(args, "ms", None),
+        filter_size=getattr(args, "fs", None),
+        match_regex=getattr(args, "mr", None),
+    )
+
+
+def _print_fuzz_table(results, title: str) -> None:
+    table = Table(title=title)
+    table.add_column("Path/Payload", overflow="fold")
+    table.add_column("Status", justify="center")
+    table.add_column("Size", justify="right")
+    table.add_column("ms", justify="right")
+    table.add_column("", justify="center")
+    for r in results:
+        style = _status_style(r.status_code)
+        table.add_row(
+            " / ".join(r.payloads),
+            f"[{style}]{r.status_code or 'ERR'}[/{style}]",
+            str(r.size_bytes),
+            f"{r.duration_ms:.0f}",
+            "[bold yellow]★[/bold yellow]" if r.anomaly else "",
+        )
+    _console.print(table)
+
+
+def _run_discover(args) -> int:
+    if getattr(args, "scope", None):
+        scope.enforce(args.url, scope.load_scope(args.scope))
     try:
-        text = Path(path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    return [line.strip() for line in text.splitlines() if line.strip() and not line.startswith("#")]
+        words: list[str] = []
+        for spec in getattr(args, "wordlists", []) or []:
+            words += payload_catalog.resolve_spec(spec)
+        for cat in getattr(args, "payloads", []) or []:
+            words += payload_catalog.load_category(cat)
+    except payload_catalog.CatalogError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        return EXIT_USAGE
+    if not words:
+        _console.print("[red]Error:[/red] provide -w SPEC or --payloads CAT for discovery.")
+        return EXIT_USAGE
+
+    exts = [e for e in (getattr(args, "extensions", None) or "").split(",") if e] or None
+    results = asyncio.run(
+        discover(
+            args.url,
+            words,
+            extensions=exts,
+            filters=_discover_filters(args),
+            concurrency=getattr(args, "concurrency", 20),
+            rate=getattr(args, "rate", 0.0),
+            recurse=getattr(args, "recurse", 0),
+            verify_ssl=not getattr(args, "no_verify", False),
+            timeout=getattr(args, "timeout", 30.0),
+        )
+    )
+    _print_fuzz_table(results, f"Discovery — {len(results)} hits")
+    return EXIT_OK
+
+
+def _run_validate(args) -> int:
+    """`curlcmd validate <kind> <url>` — HTTP or browser-executed validators."""
+    kind = args.kind
+    scope_entries = scope.load_scope(args.scope) if getattr(args, "scope", None) else []
+    if scope_entries:
+        scope.enforce(args.url, scope_entries)
+    if not getattr(args, "engagement", None):
+        _console.print("[red]Refused:[/red] validate requires --engagement LABEL (authorization).")
+        return EXIT_USAGE
+
+    verify = not getattr(args, "no_verify", False)
+    timeout = getattr(args, "timeout", 30.0)
+    evidence_dir = getattr(args, "evidence", None)
+    shot = str(Path(evidence_dir) / f"{kind}.png") if evidence_dir else None
+    if evidence_dir:
+        Path(evidence_dir).mkdir(parents=True, exist_ok=True)
+
+    from curlcommander.core import browser
+
+    try:
+        if kind == "cors":
+            from curlcommander.core.validators.cors import validate_cors
+
+            result = asyncio.run(validate_cors(args.url, origin=args.origin, verify_ssl=verify, timeout=timeout))
+        elif kind == "open-redirect":
+            from curlcommander.core.validators.redirect import validate_open_redirect
+
+            result = asyncio.run(validate_open_redirect(args.url, verify_ssl=verify, timeout=timeout))
+        else:
+            browser.require_browser()
+            result = asyncio.run(_run_browser_validator(kind, args, scope_entries, shot))
+    except browser.BrowserError as exc:
+        _console.print(f"[yellow]{exc}[/yellow]")
+        return EXIT_USAGE
+
+    colour = {"CONFIRMED": "red", "REFLECTED": "yellow", "NOT_VULNERABLE": "green", "ERROR": "red"}.get(
+        result.verdict, "white"
+    )
+    _console.print(f"[{colour} bold]{result.verdict}[/{colour} bold] {kind}: {result.detail} [dim]({result.url})[/dim]")
+    if result.payload:
+        _console.print(f"[dim]payload:[/dim] {result.payload}")
+    if shot and result.evidence.get("screenshot"):
+        _console.print(f"[green]screenshot →[/green] {shot}")
+    return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
+
+
+async def _run_browser_validator(kind: str, args, scope_entries, shot):
+    from curlcommander.core.browser import BrowserSession
+
+    evidence_dir = getattr(args, "evidence", None)
+    har = str(Path(evidence_dir) / f"{kind}.har") if evidence_dir else None
+    trace = str(Path(evidence_dir) / f"{kind}-trace.zip") if evidence_dir else None
+    async with BrowserSession(
+        headless=not getattr(args, "headed", False),
+        scope_entries=scope_entries,
+        timeout_ms=int(getattr(args, "timeout", 30.0) * 1000),
+        har_path=har,
+        trace_path=trace,
+    ) as session:
+        if kind == "xss":
+            from curlcommander.core.validators.xss import validate_xss
+
+            result = await validate_xss(session, args.url, screenshot_path=shot)
+        elif kind == "clickjacking":
+            from curlcommander.core.validators.clickjacking import validate_clickjacking
+
+            result = await validate_clickjacking(session, args.url, screenshot_path=shot)
+        elif kind == "csrf":
+            from curlcommander.core.validators.csrf import validate_csrf
+
+            result = await validate_csrf(session, args.url, screenshot_path=shot)
+        else:
+            raise ValueError(f"unknown validator: {kind}")
+
+        # H.5: persist the DOM snapshot alongside the screenshot/HAR/trace.
+        if evidence_dir and result.evidence.get("dom"):
+            (Path(evidence_dir) / f"{kind}-dom.html").write_text(result.evidence["dom"], encoding="utf-8", newline="\n")
+        return result
+
+
+def _run_proxy(args, repo) -> int:
+    """`curlcmd proxy` — intercepting HTTPS proxy (mitmproxy extra)."""
+    from curlcommander.core import proxy as proxymod
+
+    if getattr(args, "ca", False):
+        cert = proxymod.ca_cert_path()
+        _console.print(f"[bold]CA certificate:[/bold] {cert}")
+        _console.print(
+            "[yellow]Installing a CA in your OS/browser is sensitive — it lets this proxy "
+            "decrypt your TLS. Trust it only for testing, and REMOVE it afterwards.[/yellow]\n"
+            "  Firefox: Settings → Certificates → Import (Authorities)\n"
+            "  Linux:   copy to /usr/local/share/ca-certificates/ and run update-ca-certificates\n"
+            "  Remove:  delete the file above / remove it from the trust store"
+        )
+        return EXIT_OK
+
+    try:
+        proxymod.require_proxy()
+    except proxymod.ProxyError as exc:
+        _console.print(f"[yellow]{exc}[/yellow]")
+        return EXIT_USAGE
+
+    if not getattr(args, "engagement", None):
+        _console.print("[red]Refused:[/red] proxy requires --engagement LABEL (authorization).")
+        return EXIT_USAGE
+
+    scope_entries = scope.load_scope(args.scope) if getattr(args, "scope", None) else []
+    try:
+        rules = [proxymod.parse_rule(r) for r in getattr(args, "replace", []) or []]
+    except proxymod.ProxyError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        return EXIT_USAGE
+
+    _console.print(
+        f"[green]Proxy on 127.0.0.1:{args.port}[/green] — CA at {proxymod.ca_cert_path()} "
+        f"[dim](engagement {args.engagement})[/dim]. Ctrl-C to stop."
+    )
+    if scope_entries:
+        _console.print("[dim]intercepting only in-scope hosts; tunnelling the rest[/dim]")
+    try:
+        asyncio.run(
+            proxymod.run_proxy(
+                args.port,
+                scope_entries,
+                rules,
+                repo,
+                engagement=args.engagement,
+                launch_browser=getattr(args, "launch_browser", False),
+            )
+        )
+    except KeyboardInterrupt:
+        _console.print("\n[dim]proxy stopped[/dim]")
+    return EXIT_OK
+
+
+def _run_bounty_scan(args) -> int:
+    if getattr(args, "scope", None):
+        scope.enforce(args.url, scope.load_scope(args.scope))
+    if not getattr(args, "engagement", None):
+        _console.print("[red]Refused:[/red] bounty-scan requires --engagement LABEL (authorization).")
+        return EXIT_USAGE
+
+    report = BountyReport(url=args.url)
+    categories = [c.strip() for c in (args.categories or "").split(",") if c.strip()]
+    param_url = args.url + ("&" if "?" in args.url else "?") + "fuzzcc=FUZZ"
+
+    for cat in categories:
+        try:
+            payloads_list = payload_catalog.load_category(cat, all_sources=True)
+        except payload_catalog.CatalogError:
+            continue
+        if not payloads_list:
+            continue
+        results = asyncio.run(
+            category_fuzz(
+                param_url,
+                cat,
+                payloads_list,
+                concurrency=getattr(args, "concurrency", 10),
+                rate=getattr(args, "rate", 0.0),
+                verify_ssl=not getattr(args, "no_verify", False),
+                timeout=getattr(args, "timeout", 30.0),
+            )
+        )
+        for r in results:
+            if r.anomaly:
+                report.candidates.append(
+                    Candidate(
+                        cat,
+                        severity_of(cat),
+                        r.payloads[-1],
+                        r.status_code,
+                        r.size_bytes,
+                        note="anomalous response vs baseline",
+                    )
+                )
+
+    buckets = report.by_severity()
+    total = sum(len(v) for v in buckets.values())
+    _console.print(
+        f"[bold]bounty-scan[/bold] {args.url} — {total} candidate(s) [dim](engagement {args.engagement})[/dim]"
+    )
+    for sev in ("high", "medium", "low"):
+        for c in buckets.get(sev, []):
+            colour = {"high": "red", "medium": "yellow", "low": "cyan"}[sev]
+            _console.print(
+                f"[{colour}]{sev.upper()}[/{colour}] {c.category}: {c.payload!r} → {c.status_code} ({c.size_bytes} B)"
+            )
+    if total == 0:
+        _console.print("[dim]No anomalies flagged. Candidates are leads to investigate, not confirmations.[/dim]")
+    return EXIT_OK
 
 
 def _int_set(value: str | None) -> set[int] | None:

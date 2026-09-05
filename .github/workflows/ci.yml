@@ -49,6 +49,22 @@ jobs:
       - name: Pytest with coverage gate
         run: pytest --cov=curlcommander --cov-report=term-missing --cov-fail-under=80
 
+  browser-proxy:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install with browser + proxy extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,browser,proxy]"
+          python -m playwright install --with-deps chromium
+      - name: Browser validators (real Chromium) + proxy addon tests
+        run: pytest tests/test_browser_xss.py tests/test_validators.py tests/test_proxy.py -q
+
   audit:
     needs: lint
     runs-on: ubuntu-latest

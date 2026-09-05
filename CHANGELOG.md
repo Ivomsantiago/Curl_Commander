@@ -4,6 +4,40 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] — Bug-bounty payloads & browser/proxy validation
+
+### Phase G — payloads for bug bounty
+- **G.1** `core/payload_sources.py`: sync SecLists / PayloadsAllTheThings /
+  FuzzDB via shallow sparse `git clone` into the OS data dir; `SECLISTS_PATH` /
+  `CURLCOMMANDER_PAYLOADS` reuse an existing checkout; custom sources supported.
+  `curlcmd payloads sync|update`.
+- **G.2/G.3** `data/payload_map.yaml` curated category→file map; unified catalog
+  (`core/payload_catalog.py`) with `payloads list|search|show`; fuzzer resolves
+  `-w seclists:...`, `--payloads CAT` and `--payloads-all CAT` (all sources,
+  deduped) through one engine.
+- **G.4/G.5** `curlcmd discover` (dirbusting: response filters, extensions,
+  shallow recursion) and `curlcmd bounty-scan` (chained per-category fuzz,
+  severity-ranked candidates, `--engagement` + `--scope` gated) — both reuse the
+  fuzz engine.
+
+### Phase H — browser validation & intercepting proxy
+- **H.1/H.2** Optional `[browser]` extra. `core/browser.py` scope-enforced
+  Playwright wrapper; `validate xss` executes payloads in a real browser with a
+  unique canary (reflected/stored/DOM), catching dialogs and DOM sinks —
+  CONFIRMED, not just reflected.
+- **H.3** `validate clickjacking|csrf` (browser) and `validate cors|
+  open-redirect` (HTTP) with verdicts + evidence.
+- **H.4** Optional `[proxy]` extra. `core/proxy.py` / `curlcmd proxy`:
+  intercepting HTTPS proxy with its own CA (`<config>/ca/`, 0700),
+  match-and-replace, scope-gated capture into history, out-of-scope tunnelling,
+  `--launch-browser`, `--ca` guidance.
+- **H.5** `--evidence` for validators saves screenshot + DOM + HAR + Playwright
+  trace.
+- **H.6** Scenario `browser:` steps deferred — no `.http`/YAML scenario engine
+  exists in this codebase yet.
+- Scope and secret redaction apply to browser navigation and captured proxy
+  traffic; browser/proxy actions require `--engagement`.
+
 ## [Unreleased] — Portability & packaging
 
 ### Packaging
