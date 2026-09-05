@@ -15,6 +15,16 @@ Python 3.11+ · `httpx` · `rich` · `prompt_toolkit` · `textual`.
 
 ## 1. Installation
 
+**Linux/macOS:** `bash install.sh`  ·  **Windows:** `powershell -ExecutionPolicy Bypass -File install.ps1`
+
+| Method | Command | OS | When to use |
+|--------|---------|----|-------------|
+| **Standalone binary** | download `curlcmd`/`curlcmd.exe` from Releases | Win/Lin/mac | **Recommended** if you just want to run it — no Python needed |
+| `curlcmd.pyz` | download the `.pyz`, `python curlcmd.pyz` | any | Have Python, want one file, no install |
+| pipx | `pipx install curlcommander` | any | Isolated user install, on PATH |
+| uv | `uv tool install curlcommander` | any | Same, faster |
+| pip (dev) | `pip install -e ".[dev]"` | any | Developing/contributing |
+
 ```bash
 bash install.sh            # uv tool / pipx, or a local .venv
 ```
@@ -25,6 +35,25 @@ back to a local `.venv`, and only touches the system Python with
 
 Optional extras: `pip install "curlcommander[socks]"` (SOCKS proxy),
 `"[clipboard]"` (pyperclip). Run `curlcmd --version` to verify.
+
+### Standalone binary (no Python required)
+
+Download `curlcmd` / `curlcmd.exe` for your OS from the
+[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases) page, verify
+the checksum against `SHA256SUMS`, and run it directly:
+
+```bash
+chmod +x curlcmd && ./curlcmd --version          # Linux/macOS
+.\curlcmd.exe --version                           # Windows (PowerShell)
+```
+
+Build it yourself with `pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
+(output in `dist/`). A single-file `curlcmd.pyz` (needs Python, no install) is
+also available via `pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
+
+> **Antivirus note.** PyInstaller binaries occasionally trigger a false positive
+> on Windows Defender/SmartScreen. Verify the published SHA256, or install via
+> `pipx`/`pip` instead if your environment blocks unsigned binaries.
 
 ---
 
@@ -52,8 +81,17 @@ and prints a warning.
 `export-history --reveal` resolve `{{VAR}}` references from the current
 environment. `«REDACTED»` values are unrecoverable by design.
 
-**File permissions.** `~/.curlcommander/` is created `0700` and `history.db`
-`0600`. Session cookie jars are `0600`.
+**Storage location.** History lives in the OS data dir — `%LOCALAPPDATA%\CurlCommander`
+(Windows), `~/Library/Application Support/CurlCommander` (macOS),
+`~/.local/share/curlcommander` (Linux, respects `XDG_DATA_HOME`). Set
+`CURLCOMMANDER_HOME` to override it (portable/CI use). A legacy
+`~/.curlcommander` from earlier versions is migrated automatically on first run.
+
+**File permissions.** The app dir is created `0700` and `history.db` `0600`
+(session cookie jars `0600`) on POSIX. **On Windows** `chmod` only toggles the
+read-only bit — it does not restrict other local users — so on Windows the real
+protection for the history is **secret redaction** (enabled by default); do not
+disable it with `--no-redact` on a shared machine.
 
 **Operational safety for pentests.** `--scope scope.txt` refuses any target not
 in the allowlist. `--dry-run` shows the exact bytes without sending.
@@ -190,7 +228,8 @@ a history table (replay / show-curl / delete).
 
 ## 5. History storage
 
-Requests are stored in `~/.curlcommander/history.db` (SQLite, `0600`). The full
+Requests are stored in the OS data dir (see Storage location above) as
+`history.db` (SQLite, `0600` on POSIX). The full
 request is kept as a redacted `config_json` snapshot so replay is lossless;
 schema upgrades run automatically via `PRAGMA user_version`.
 

@@ -42,3 +42,17 @@ def test_main_url_named_like_subcommand(monkeypatch, tmp_path):
     with pytest.raises(SystemExit) as exc:
         main_mod.main()
     assert exc.value.code == 0
+
+
+def test_module_entry_point_version():
+    """`python -m curlcommander --version` is the frozen-binary entry path."""
+    import subprocess
+    import sys
+
+    out = subprocess.run(
+        [sys.executable, "-m", "curlcommander", "--version"],
+        capture_output=True,
+        text=True,
+    )
+    assert out.returncode == 0
+    assert "curlcmd" in out.stdout

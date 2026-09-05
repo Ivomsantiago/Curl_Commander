@@ -31,6 +31,7 @@ dependencies = [
     "rich>=13.0",
     "prompt_toolkit>=3.0",
     "textual>=0.60",
+    "platformdirs>=3.0",
 ]
 
 [project.urls]
@@ -51,6 +52,8 @@ dev = [
 ]
 socks = ["httpx[socks]"]
 clipboard = ["pyperclip"]
+build-exe = ["pyinstaller>=6.0", "certifi"]
+build-pyz = ["shiv"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"

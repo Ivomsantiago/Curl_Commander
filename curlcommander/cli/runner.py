@@ -29,9 +29,11 @@ from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send, stream_send
 from curlcommander.core.logging_setup import get_logger, setup_logging
 from curlcommander.core.parsing import ParseError, parse_headers, parse_params
-from curlcommander.core.raw_http import RawRequestError, parse_raw_request
+from curlcommander.core.raw_http import RawRequestError, parse_raw_request_bytes
 from curlcommander.core.raw_transport import (
     RawTransportError,
+    fix_content_length,
+    is_smuggling_shaped,
     send_raw_request,
     serialize_request,
     target_from_url,
@@ -379,7 +381,15 @@ def _int_set(value: str | None) -> set[int] | None:
 
 def _execute_raw_request(args, repo: HistoryRepo) -> int:
     """Send a raw HTTP request block byte-for-byte over a socket (2B.2)."""
+    # Binary read: no universal-newline translation (Windows would collapse
+    # \r\n and destroy chunked/CL.TE framing). F1.1
     raw = Path(args.raw_request).read_bytes()
+
+    # Convenience: recompute a lone Content-Length to match the body, but only
+    # when the request is not a deliberate smuggling payload, and never with
+    # --no-fix-length. Smuggling/chunked requests are sent exactly as written.
+    if not getattr(args, "no_fix_length", False) and not is_smuggling_shaped(raw):
+        raw = fix_content_length(raw)
 
     host_arg = getattr(args, "host", None)
     if host_arg:
@@ -410,7 +420,7 @@ def _execute_raw_request(args, repo: HistoryRepo) -> int:
 
     # Persist a best-effort config view for history.
     try:
-        cfg = parse_raw_request(raw.decode("latin-1", errors="replace"), host=host_arg)
+        cfg = parse_raw_request_bytes(raw, host=host_arg)
         _persist(cfg, result.status_code, result.duration_ms, repo)
     except (RawRequestError, ValueError):
         pass
@@ -560,8 +570,8 @@ def _maybe_import(args) -> RequestConfig | None:
 
         return parse_curl(read_clipboard())
     if getattr(args, "import_raw", None):
-        text = Path(args.import_raw).read_text(encoding="utf-8")
-        return parse_raw_request(text, host=getattr(args, "host", None))
+        data = Path(args.import_raw).read_bytes()  # byte-faithful (F1.1)
+        return parse_raw_request_bytes(data, host=getattr(args, "host", None))
     return None
 
 

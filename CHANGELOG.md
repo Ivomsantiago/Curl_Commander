@@ -4,6 +4,49 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] — Portability & packaging
+
+### Packaging
+- **F2.1** Standalone single-file executable via PyInstaller
+  (`packaging/curlcmd.spec`, `[build-exe]` extra): bundles the payload data
+  files, Textual/httpx/rich hidden imports, and a certifi CA store (runtime
+  hook sets `SSL_CERT_FILE`) so TLS works in the frozen binary. `curlcmd.exe`
+  on Windows, `curlcmd` on Linux/macOS. `python -m curlcommander` entry added.
+- **F2.2** Optional `curlcmd.pyz` via shiv/zipapp (`[build-pyz]` extra) for
+  users who have Python but want a single file without installing.
+- **F2.3** Symbols stripped where supported, tkinter/test modules excluded;
+  README documents the antivirus false-positive caveat and the SHA256 check.
+
+### Release CI/CD
+- **F4.1/F4.2** `.github/workflows/release.yml` on `v*` tags: runs the CI suite
+  as a gate, builds the standalone binary on Linux / Windows / macOS-x86_64 /
+  macOS-arm64, **smoke-tests the frozen binary on each OS**, publishes the
+  binaries plus a combined `SHA256SUMS` to the GitHub Release, and publishes the
+  wheel + sdist to PyPI via OIDC trusted publishing. `ci.yml` gained a
+  `workflow_call` trigger so it can be reused as that gate.
+
+### Distribution
+- **F3.1** `install.ps1` for Windows mirroring `install.sh` (uv tool → pipx →
+  local `.venv`, `-System` behind confirmation, `-Help`).
+- **F3.2** `install.sh --help` points to the standalone binary for Python-less
+  installs.
+- **F3.3** README installation table (method × OS) with the standalone binary
+  as the recommended path.
+
+### Portability fixes
+- **F1.1** Raw requests are read byte-for-byte from disk (`read_bytes`, no
+  universal-newline translation) and `parse_raw_request_bytes` preserves the
+  body verbatim, so hand-crafted chunked / CL.TE framing survives on Windows.
+  `--raw-request` recomputes a lone `Content-Length` for convenience but never
+  for a smuggling-shaped request, and `--no-fix-length` disables it entirely.
+- **F1.2** Config lives in the OS data dir via `platformdirs`
+  (`%LOCALAPPDATA%`, `~/Library/Application Support`, XDG); `CURLCOMMANDER_HOME`
+  overrides it; a legacy `~/.curlcommander` migrates automatically on first run.
+- **F1.3** Text outputs (history export, cookie jars, evidence metadata) are
+  written with explicit `newline="\n"` for reproducible, OS-independent files.
+- **F1.4** Documented that on Windows `chmod` only sets read-only; secret
+  redaction is the real protection there.
+
 ## [0.2.0]
 
 ### Architecture

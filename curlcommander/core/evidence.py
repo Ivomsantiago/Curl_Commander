@@ -47,7 +47,7 @@ def save_evidence(
         "duration_ms": round(result.duration_ms, 2),
         "size_bytes": result.size_bytes,
     }
-    (folder / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (folder / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8", newline="\n")
     return folder
 
 

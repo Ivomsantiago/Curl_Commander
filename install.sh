@@ -16,6 +16,10 @@ for arg in "$@"; do
       echo "Usage: bash install.sh [--system]"
       echo "  (default) install with uv tool / pipx, or a local .venv"
       echo "  --system  install into the system Python (--break-system-packages)"
+      echo
+      echo "No Python? Download a standalone binary from the Releases page:"
+      echo "  https://github.com/Ivomsantiago/Curl_Commander/releases"
+      echo "  chmod +x curlcmd && ./curlcmd --version"
       exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 1 ;;
   esac
