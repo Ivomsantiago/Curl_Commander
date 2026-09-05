@@ -10,7 +10,7 @@ from rich.table import Table
 from rich.text import Text
 
 from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
-from curlcommander.core import payloads, scope
+from curlcommander.core import payload_catalog, payload_sources, scope
 from curlcommander.core.api_styles import (
     graphql_config,
     graphql_field_names,
@@ -73,6 +73,8 @@ def run_cli(args) -> int:
                 repo.clear()
                 _console.print("[green]History cleared.[/green]")
                 return EXIT_OK
+            case "payloads":
+                return _run_payloads(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -221,7 +223,7 @@ def _run_request(args, repo: HistoryRepo) -> int:
         return _run_stream(config)
 
     # Fuzzing (2B.3): a wordlist / built-in payload set plus FUZZ markers.
-    if getattr(args, "wordlists", None) or getattr(args, "payloads", None):
+    if getattr(args, "wordlists", None) or getattr(args, "payloads", None) or getattr(args, "payloads_all", None):
         return _run_fuzz(config, args)
 
     if args.curl_only:
@@ -299,14 +301,24 @@ def _run_stream(config: RequestConfig) -> int:
     return EXIT_OK
 
 
+def _resolve_fuzz_wordlists(args) -> list[list[str]]:
+    """Resolve -w specs and --payloads/--payloads-all categories via the catalog."""
+    wordlists: list[list[str]] = []
+    for spec in getattr(args, "wordlists", []) or []:
+        wordlists.append(payload_catalog.resolve_spec(spec))
+    for cat in getattr(args, "payloads", []) or []:
+        wordlists.append(payload_catalog.load_category(cat, all_sources=False))
+    for cat in getattr(args, "payloads_all", []) or []:
+        wordlists.append(payload_catalog.load_category(cat, all_sources=True))
+    return wordlists
+
+
 def _run_fuzz(config: RequestConfig, args) -> int:
-    wordlists = [_load_wordlist(p) for p in getattr(args, "wordlists", [])]
-    for name in getattr(args, "payloads", []) or []:
-        try:
-            wordlists.append(payloads.load(name))
-        except KeyError as exc:
-            _console.print(f"[red]Error:[/red] {exc}")
-            return EXIT_USAGE
+    try:
+        wordlists = _resolve_fuzz_wordlists(args)
+    except payload_catalog.CatalogError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        return EXIT_USAGE
     if not wordlists or any(not wl for wl in wordlists):
         _console.print("[red]Error:[/red] a wordlist/payload set is empty or unreadable.")
         return EXIT_USAGE
@@ -360,12 +372,68 @@ def _run_fuzz(config: RequestConfig, args) -> int:
     return EXIT_OK
 
 
-def _load_wordlist(path: str) -> list[str]:
-    try:
-        text = Path(path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    return [line.strip() for line in text.splitlines() if line.strip() and not line.startswith("#")]
+def _run_payloads(args) -> int:
+    """`curlcmd payloads sync|update|list|search|show` (G.1-G.3)."""
+    cmd = getattr(args, "payloads_cmd", None)
+    if cmd == "sync":
+        name = getattr(args, "source", None)
+        try:
+            names = [name] if name else list(payload_sources.load_sources())
+            for n in names:
+                dest = payload_sources.sync(n)
+                _console.print(f"[green]synced[/green] {n} → {dest}")
+        except payload_sources.PayloadSourceError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+        return EXIT_OK
+    if cmd == "update":
+        try:
+            for dest in payload_sources.update():
+                _console.print(f"[green]updated[/green] {dest}")
+        except payload_sources.PayloadSourceError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+        return EXIT_OK
+    if cmd == "list":
+        category = getattr(args, "category", None)
+        if category:
+            try:
+                files = payload_catalog.category_files(category, all_sources=True)
+            except payload_catalog.CatalogError as exc:
+                _console.print(f"[red]Error:[/red] {exc}")
+                return EXIT_USAGE
+            for f in files:
+                _console.print(str(f))
+        else:
+            _console.print("[bold]Categories:[/bold] " + ", ".join(payload_catalog.categories()))
+            avail = [n for n in payload_sources.load_sources() if payload_sources.is_available(n)]
+            _console.print(
+                "[bold]Synced sources:[/bold] " + (", ".join(avail) or "(none — run: curlcmd payloads sync)")
+            )
+        return EXIT_OK
+    if cmd == "search":
+        hits = payload_catalog.search(args.term)
+        for h in hits:
+            _console.print(h)
+        if not hits:
+            _console.print("[dim]no matches[/dim]")
+        return EXIT_OK
+    if cmd == "show":
+        try:
+            lines = payload_catalog.load_category(args.category, all_sources=getattr(args, "all_sources", False))
+        except payload_catalog.CatalogError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+        if getattr(args, "count", False):
+            _console.print(str(len(lines)))
+        else:
+            for line in lines[: args.limit]:
+                _console.print(line, highlight=False)
+            if len(lines) > args.limit:
+                _console.print(f"[dim]… {len(lines) - args.limit} more (total {len(lines)})[/dim]")
+        return EXIT_OK
+    _console.print("[red]Error:[/red] unknown payloads subcommand")
+    return EXIT_USAGE
 
 
 def _int_set(value: str | None) -> set[int] | None:

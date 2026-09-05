@@ -72,8 +72,16 @@ def build_request_parser() -> argparse.ArgumentParser:
         action="append",
         dest="payloads",
         default=[],
-        metavar="NAME",
-        help="Built-in payload set (sqli/xss/ssti/traversal/cmdi)",
+        metavar="CAT",
+        help="Payload category via the catalog (xss/sqli/ssti/lfi/ssrf/...)",
+    )
+    fuzz.add_argument(
+        "--payloads-all",
+        action="append",
+        dest="payloads_all",
+        default=[],
+        metavar="CAT",
+        help="Payload category from ALL synced sources, deduped",
     )
     fuzz.add_argument(
         "--fuzz-mode", choices=["clusterbomb", "pitchfork"], default="clusterbomb", help="Multi-wordlist mode"
@@ -200,9 +208,33 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("clear-history", help="Clear all history")
 
+    # payloads sync / update / list / search / show
+    payloads_p = subparsers.add_parser("payloads", help="Manage payload sources and catalog")
+    p_sub = payloads_p.add_subparsers(dest="payloads_cmd", required=True)
+    p_sync = p_sub.add_parser("sync", help="Clone/update a payload source")
+    p_sync.add_argument("source", nargs="?", help="Source name (default: all)")
+    p_sub.add_parser("update", help="Update all synced sources")
+    p_list = p_sub.add_parser("list", help="List catalog categories / synced sources")
+    p_list.add_argument("--category", metavar="CAT", help="List files backing a category")
+    p_search = p_sub.add_parser("search", help="Search wordlist filenames")
+    p_search.add_argument("term", help="Substring to search for")
+    p_show = p_sub.add_parser("show", help="Preview a category's payloads")
+    p_show.add_argument("category", help="Category name")
+    p_show.add_argument("--limit", type=int, default=20, help="Max lines to show")
+    p_show.add_argument("--count", action="store_true", help="Only print the total count")
+    p_show.add_argument("--all", action="store_true", dest="all_sources", help="Use all synced sources")
+
     return parser
 
 
 SUBCOMMANDS: frozenset[str] = frozenset(
-    {"history", "replay", "curl", "export-history", "delete-history", "clear-history"}
+    {
+        "history",
+        "replay",
+        "curl",
+        "export-history",
+        "delete-history",
+        "clear-history",
+        "payloads",
+    }
 )
