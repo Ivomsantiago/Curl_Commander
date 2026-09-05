@@ -34,7 +34,9 @@ back to a local `.venv`, and only touches the system Python with
 `--break-system-packages` if you pass `--system` and confirm.
 
 Optional extras: `pip install "curlcommander[socks]"` (SOCKS proxy),
-`"[clipboard]"` (pyperclip). Run `curlcmd --version` to verify.
+`"[clipboard]"` (pyperclip), `"[browser]"` (Playwright validators — then
+`playwright install chromium`), `"[proxy]"` (mitmproxy intercepting proxy).
+Run `curlcmd --version` to verify.
 
 ### Standalone binary (no Python required)
 
@@ -235,7 +237,71 @@ schema upgrades run automatically via `PRAGMA user_version`.
 
 ---
 
-## 6. Development
+## 6. Bug bounty — payloads → fuzz → discover
+
+Payload sources (SecLists, PayloadsAllTheThings, FuzzDB) are synced on demand,
+not vendored. Point at an existing checkout with `SECLISTS_PATH` /
+`CURLCOMMANDER_PAYLOADS` instead of syncing.
+
+```bash
+curlcmd payloads sync seclists          # shallow, sparse clone into the data dir
+curlcmd payloads list                    # categories + synced sources
+curlcmd payloads search common           # find wordlist files
+curlcmd payloads show xss --count        # size a fuzz run
+
+# Resolve by intent or by source path — one fuzz engine, existing filters:
+curlcmd --payloads xss "https://t/s?q=FUZZ" --mr "alert\("
+curlcmd -w seclists:Discovery/Web-Content/common.txt "https://t/FUZZ" --fc 404
+curlcmd --payloads-all sqli --encode url "https://t/i?id=FUZZ"   # all sources, deduped
+
+# Content discovery (dirbusting) and a chained profile:
+curlcmd discover https://t -w seclists:Discovery/Web-Content/raft-medium-directories.txt -e php,bak --recurse 1
+curlcmd bounty-scan https://t/page --engagement ENG-2026 --categories xss,sqli,traversal
+```
+
+`bounty-scan` consolidates anomalies into severity-ranked **candidates to
+investigate** — never confirmations. Confirm them in a browser (below).
+
+## 7. Browser validation & intercepting proxy
+
+Heavy deps are optional extras that degrade with a clear message:
+
+```bash
+pip install "curlcommander[browser]" && playwright install chromium   # validators
+pip install "curlcommander[proxy]"                                     # proxy
+```
+
+**Validate** moves a reflected candidate to CONFIRMED by executing it in a real
+browser (unique per-test canary → no false positives). Every navigation is
+scope-checked and requires `--engagement`.
+
+```bash
+curlcmd validate xss "https://t/s?q=§PAYLOAD§" --engagement ENG --evidence out/
+curlcmd validate clickjacking https://t/panel --engagement ENG
+curlcmd validate cors https://api.t/data --origin https://evil.example --engagement ENG
+curlcmd validate open-redirect "https://t/r?next=§DEST§" --engagement ENG
+```
+
+`--evidence DIR` saves a screenshot, the DOM, a HAR and a Playwright trace.
+
+**Proxy** — an intercepting HTTPS proxy with its own CA, match-and-replace, and
+scope-gated capture into history:
+
+```bash
+curlcmd proxy --ca                       # print the CA path + install/removal guidance
+curlcmd proxy --port 8080 --scope scope.txt --engagement ENG \
+        --replace 'resp:secret==>«X»' --launch-browser
+```
+
+> **CA warning.** Installing the proxy CA in your OS/browser lets it decrypt
+> your TLS — trust it only for testing and **remove it afterwards**. Only
+> in-scope hosts are intercepted; everything else is tunnelled without
+> inspection. The standalone binary does **not** bundle Chromium/mitmproxy —
+> install the extras separately for browser/proxy mode.
+
+---
+
+## 8. Development
 
 ```bash
 uv pip install -e ".[dev]"
@@ -246,7 +312,7 @@ ruff check . && ruff format --check . && mypy && pytest --cov=curlcommander
 
 ---
 
-## 7. Roadmap
+## 9. Roadmap
 
 - Response diffing between history entries (`diff`), stored response bodies.
 - Detailed timing (DNS/connect/TLS/TTFB) and redirect-chain view.
