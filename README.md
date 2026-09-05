@@ -15,6 +15,16 @@ Python 3.11+ · `httpx` · `rich` · `prompt_toolkit` · `textual`.
 
 ## 1. Installation
 
+**Linux/macOS:** `bash install.sh`  ·  **Windows:** `powershell -ExecutionPolicy Bypass -File install.ps1`
+
+| Method | Command | OS | When to use |
+|--------|---------|----|-------------|
+| **Standalone binary** | download `curlcmd`/`curlcmd.exe` from Releases | Win/Lin/mac | **Recommended** if you just want to run it — no Python needed |
+| `curlcmd.pyz` | download the `.pyz`, `python curlcmd.pyz` | any | Have Python, want one file, no install |
+| pipx | `pipx install curlcommander` | any | Isolated user install, on PATH |
+| uv | `uv tool install curlcommander` | any | Same, faster |
+| pip (dev) | `pip install -e ".[dev]"` | any | Developing/contributing |
+
 ```bash
 bash install.sh            # uv tool / pipx, or a local .venv
 ```

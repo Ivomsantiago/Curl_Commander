@@ -17,6 +17,14 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - **F2.3** Symbols stripped where supported, tkinter/test modules excluded;
   README documents the antivirus false-positive caveat and the SHA256 check.
 
+### Distribution
+- **F3.1** `install.ps1` for Windows mirroring `install.sh` (uv tool → pipx →
+  local `.venv`, `-System` behind confirmation, `-Help`).
+- **F3.2** `install.sh --help` points to the standalone binary for Python-less
+  installs.
+- **F3.3** README installation table (method × OS) with the standalone binary
+  as the recommended path.
+
 ### Portability fixes
 - **F1.1** Raw requests are read byte-for-byte from disk (`read_bytes`, no
   universal-newline translation) and `parse_raw_request_bytes` preserves the
