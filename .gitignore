@@ -27,3 +27,9 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
