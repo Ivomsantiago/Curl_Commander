@@ -1,0 +1,20 @@
+# Built-in payload sources. `curlcmd payloads sync` clones these (shallow) into
+# the OS data dir; SECLISTS_PATH / CURLCOMMANDER_PAYLOADS point at existing
+# checkouts instead. Add your own under a user sources.yaml in the data dir.
+sources:
+  seclists:
+    repo: https://github.com/danielmiessler/SecLists.git
+    dir: seclists
+    # Sparse subtrees actually used (keeps the checkout small when supported).
+    sparse:
+      - Discovery/Web-Content
+      - Fuzzing
+      - Passwords/Common-Credentials
+  payloadsallthethings:
+    repo: https://github.com/swisskyrepo/PayloadsAllTheThings.git
+    dir: payloadsallthethings
+    sparse: []
+  fuzzdb:
+    repo: https://github.com/fuzzdb-project/fuzzdb.git
+    dir: fuzzdb
+    sparse: []
