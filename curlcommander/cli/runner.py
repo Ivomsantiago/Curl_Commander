@@ -88,6 +88,8 @@ def run_cli(args) -> int:
                 return _run_bounty_scan(args)
             case "validate":
                 return _run_validate(args)
+            case "proxy":
+                return _run_proxy(args, repo)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -561,24 +563,90 @@ def _run_validate(args) -> int:
 async def _run_browser_validator(kind: str, args, scope_entries, shot):
     from curlcommander.core.browser import BrowserSession
 
+    evidence_dir = getattr(args, "evidence", None)
+    har = str(Path(evidence_dir) / f"{kind}.har") if evidence_dir else None
+    trace = str(Path(evidence_dir) / f"{kind}-trace.zip") if evidence_dir else None
     async with BrowserSession(
         headless=not getattr(args, "headed", False),
         scope_entries=scope_entries,
         timeout_ms=int(getattr(args, "timeout", 30.0) * 1000),
+        har_path=har,
+        trace_path=trace,
     ) as session:
         if kind == "xss":
             from curlcommander.core.validators.xss import validate_xss
 
-            return await validate_xss(session, args.url, screenshot_path=shot)
-        if kind == "clickjacking":
+            result = await validate_xss(session, args.url, screenshot_path=shot)
+        elif kind == "clickjacking":
             from curlcommander.core.validators.clickjacking import validate_clickjacking
 
-            return await validate_clickjacking(session, args.url, screenshot_path=shot)
-        if kind == "csrf":
+            result = await validate_clickjacking(session, args.url, screenshot_path=shot)
+        elif kind == "csrf":
             from curlcommander.core.validators.csrf import validate_csrf
 
-            return await validate_csrf(session, args.url, screenshot_path=shot)
-        raise ValueError(f"unknown validator: {kind}")
+            result = await validate_csrf(session, args.url, screenshot_path=shot)
+        else:
+            raise ValueError(f"unknown validator: {kind}")
+
+        # H.5: persist the DOM snapshot alongside the screenshot/HAR/trace.
+        if evidence_dir and result.evidence.get("dom"):
+            (Path(evidence_dir) / f"{kind}-dom.html").write_text(result.evidence["dom"], encoding="utf-8", newline="\n")
+        return result
+
+
+def _run_proxy(args, repo) -> int:
+    """`curlcmd proxy` — intercepting HTTPS proxy (mitmproxy extra)."""
+    from curlcommander.core import proxy as proxymod
+
+    if getattr(args, "ca", False):
+        cert = proxymod.ca_cert_path()
+        _console.print(f"[bold]CA certificate:[/bold] {cert}")
+        _console.print(
+            "[yellow]Installing a CA in your OS/browser is sensitive — it lets this proxy "
+            "decrypt your TLS. Trust it only for testing, and REMOVE it afterwards.[/yellow]\n"
+            "  Firefox: Settings → Certificates → Import (Authorities)\n"
+            "  Linux:   copy to /usr/local/share/ca-certificates/ and run update-ca-certificates\n"
+            "  Remove:  delete the file above / remove it from the trust store"
+        )
+        return EXIT_OK
+
+    try:
+        proxymod.require_proxy()
+    except proxymod.ProxyError as exc:
+        _console.print(f"[yellow]{exc}[/yellow]")
+        return EXIT_USAGE
+
+    if not getattr(args, "engagement", None):
+        _console.print("[red]Refused:[/red] proxy requires --engagement LABEL (authorization).")
+        return EXIT_USAGE
+
+    scope_entries = scope.load_scope(args.scope) if getattr(args, "scope", None) else []
+    try:
+        rules = [proxymod.parse_rule(r) for r in getattr(args, "replace", []) or []]
+    except proxymod.ProxyError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        return EXIT_USAGE
+
+    _console.print(
+        f"[green]Proxy on 127.0.0.1:{args.port}[/green] — CA at {proxymod.ca_cert_path()} "
+        f"[dim](engagement {args.engagement})[/dim]. Ctrl-C to stop."
+    )
+    if scope_entries:
+        _console.print("[dim]intercepting only in-scope hosts; tunnelling the rest[/dim]")
+    try:
+        asyncio.run(
+            proxymod.run_proxy(
+                args.port,
+                scope_entries,
+                rules,
+                repo,
+                engagement=args.engagement,
+                launch_browser=getattr(args, "launch_browser", False),
+            )
+        )
+    except KeyboardInterrupt:
+        _console.print("\n[dim]proxy stopped[/dim]")
+    return EXIT_OK
 
 
 def _run_bounty_scan(args) -> int:

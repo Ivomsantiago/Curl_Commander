@@ -69,6 +69,8 @@ class BrowserSession:
         user_agent: str | None = None,
         scope_entries: list[str] | None = None,
         timeout_ms: int = 15000,
+        har_path: str | None = None,
+        trace_path: str | None = None,
     ) -> None:
         self.headless = headless
         self.proxy = proxy
@@ -76,6 +78,8 @@ class BrowserSession:
         self.user_agent = user_agent
         self.scope_entries = scope_entries or []
         self.timeout_ms = timeout_ms
+        self.har_path = har_path
+        self.trace_path = trace_path
         self._pw: Any = None
         self._browser: Any = None
         self.context: Any = None
@@ -95,16 +99,22 @@ class BrowserSession:
         ctx_kwargs: dict[str, Any] = {"ignore_https_errors": True}
         if self.user_agent:
             ctx_kwargs["user_agent"] = self.user_agent
+        if self.har_path:
+            ctx_kwargs["record_har_path"] = self.har_path  # H.5: navigation HAR
         self.context = await self._browser.new_context(**ctx_kwargs)
         self.context.set_default_timeout(self.timeout_ms)
+        if self.trace_path:
+            await self.context.tracing.start(screenshots=True, snapshots=True)
         if self.cookies:
             await self._apply_cookies()
         return self
 
     async def __aexit__(self, *exc: object) -> None:
         try:
+            if self.context and self.trace_path:
+                await self.context.tracing.stop(path=self.trace_path)
             if self.context:
-                await self.context.close()
+                await self.context.close()  # flushes the HAR
             if self._browser:
                 await self._browser.close()
         finally:

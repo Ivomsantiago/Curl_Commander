@@ -104,13 +104,20 @@ async def validate_xss(
             if executed:
                 if screenshot_path:
                     await page.screenshot(path=screenshot_path)
+                dom = await page.content()
                 return ValidationResult(
                     "xss",
                     CONFIRMED,
                     url,
                     detail=f"executed via {'dialog' if dialogs else hits}",
                     payload=payload,
-                    evidence={"dialogs": list(dialogs), "sinks": hits, "canary": canary, "screenshot": screenshot_path},
+                    evidence={
+                        "dialogs": list(dialogs),
+                        "sinks": hits,
+                        "canary": canary,
+                        "screenshot": screenshot_path,
+                        "dom": dom,
+                    },
                 )
 
             content = await page.content()

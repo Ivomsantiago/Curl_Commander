@@ -87,3 +87,33 @@ async def test_screenshot_written(server, tmp_path):
         result = await validate_xss(s, f"{server}/vuln?q=§PAYLOAD§", screenshot_path=str(shot))
     assert result.confirmed
     assert shot.exists() and shot.stat().st_size > 0
+
+
+def test_cli_validate_xss_writes_evidence(server, tmp_path, monkeypatch):
+    """End-to-end: validate xss with --evidence writes screenshot/HAR/trace/DOM."""
+    import types
+
+    from curlcommander.cli import runner
+
+    monkeypatch.setattr(runner, "DB_PATH", tmp_path / "h.db")
+    ev = tmp_path / "ev"
+    args = types.SimpleNamespace(
+        subcommand="validate",
+        kind="xss",
+        url=f"{server}/vuln?q=§PAYLOAD§",
+        engagement="ENG-1",
+        scope=None,
+        origin="x",
+        headed=False,
+        evidence=str(ev),
+        no_verify=True,
+        timeout=10.0,
+        log_file=None,
+        log_level=None,
+    )
+    rc = runner.run_cli(args)
+    assert rc == runner.EXIT_OK
+    assert (ev / "xss.png").exists()
+    assert (ev / "xss.har").exists()
+    assert (ev / "xss-trace.zip").exists()
+    assert (ev / "xss-dom.html").exists()

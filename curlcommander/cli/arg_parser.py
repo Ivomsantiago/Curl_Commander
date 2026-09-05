@@ -242,6 +242,22 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     disc.add_argument("--no-verify", action="store_true")
     disc.add_argument("--timeout", type=float, default=30.0)
 
+    # proxy (intercepting HTTPS proxy with its own CA)
+    prox = subparsers.add_parser("proxy", help="Run an intercepting HTTPS proxy (mitmproxy)")
+    prox.add_argument("--port", type=int, default=8080)
+    prox.add_argument("--scope", metavar="PATH", help="Only intercept in-scope hosts; tunnel the rest")
+    prox.add_argument("--engagement", metavar="LABEL", help="Authorization label (required)")
+    prox.add_argument(
+        "--replace",
+        action="append",
+        dest="replace",
+        default=[],
+        metavar="RULE",
+        help="Match-and-replace: [req|resp:]pattern==>replacement (repeatable)",
+    )
+    prox.add_argument("--launch-browser", action="store_true", help="Open Chromium routed through the proxy")
+    prox.add_argument("--ca", action="store_true", help="Print the CA path + install/removal guidance and exit")
+
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Validate a vulnerability (browser/HTTP)")
     val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf"])
@@ -280,5 +296,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "discover",
         "bounty-scan",
         "validate",
+        "proxy",
     }
 )

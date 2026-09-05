@@ -56,6 +56,7 @@ clipboard = ["pyperclip"]
 build-exe = ["pyinstaller>=6.0", "certifi"]
 build-pyz = ["shiv"]
 browser = ["playwright>=1.40"]
+proxy = ["mitmproxy>=10.0"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"
@@ -100,4 +101,5 @@ omit = [
     "curlcommander/core/validators/xss.py",
     "curlcommander/core/validators/clickjacking.py",
     "curlcommander/core/validators/csrf.py",
+    "curlcommander/core/proxy.py",
 ]
