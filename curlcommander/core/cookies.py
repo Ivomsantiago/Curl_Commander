@@ -37,7 +37,7 @@ def save_jar(path: str | Path, cookies: httpx.Cookies) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     out = [{"name": c.name, "value": c.value, "domain": c.domain, "path": c.path} for c in cookies.jar]
-    p.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    p.write_text(json.dumps(out, indent=2), encoding="utf-8", newline="\n")
     try:
         p.chmod(0o600)  # cookies are session credentials
     except OSError:

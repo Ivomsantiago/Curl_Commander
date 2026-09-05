@@ -4,6 +4,22 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] — Portability & packaging
+
+### Portability fixes
+- **F1.1** Raw requests are read byte-for-byte from disk (`read_bytes`, no
+  universal-newline translation) and `parse_raw_request_bytes` preserves the
+  body verbatim, so hand-crafted chunked / CL.TE framing survives on Windows.
+  `--raw-request` recomputes a lone `Content-Length` for convenience but never
+  for a smuggling-shaped request, and `--no-fix-length` disables it entirely.
+- **F1.2** Config lives in the OS data dir via `platformdirs`
+  (`%LOCALAPPDATA%`, `~/Library/Application Support`, XDG); `CURLCOMMANDER_HOME`
+  overrides it; a legacy `~/.curlcommander` migrates automatically on first run.
+- **F1.3** Text outputs (history export, cookie jars, evidence metadata) are
+  written with explicit `newline="\n"` for reproducible, OS-independent files.
+- **F1.4** Documented that on Windows `chmod` only sets read-only; secret
+  redaction is the real protection there.
+
 ## [0.2.0]
 
 ### Architecture

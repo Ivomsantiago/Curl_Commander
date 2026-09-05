@@ -86,7 +86,7 @@ class HistoryRepo:
             entries.append(self._entry_to_jsonable(entry))
         output = Path(output_path)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+        output.write_text(json.dumps(entries, indent=2), encoding="utf-8", newline="\n")
 
     @staticmethod
     def _entry_to_jsonable(entry: HistoryEntry) -> dict[str, Any]:

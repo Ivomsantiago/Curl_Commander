@@ -3,6 +3,10 @@ import sys
 
 def main() -> None:
     from curlcommander.cli.arg_parser import SUBCOMMANDS, build_request_parser, build_subcommand_parser
+    from curlcommander.config import migrate_legacy
+
+    # One-time migration of a legacy ~/.curlcommander to the OS data dir (F1.2).
+    migrate_legacy()
 
     # Detect subcommand before argparse can misinterpret a URL as one
     positionals = [a for a in sys.argv[1:] if not a.startswith("-")]

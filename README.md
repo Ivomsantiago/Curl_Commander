@@ -52,8 +52,17 @@ and prints a warning.
 `export-history --reveal` resolve `{{VAR}}` references from the current
 environment. `«REDACTED»` values are unrecoverable by design.
 
-**File permissions.** `~/.curlcommander/` is created `0700` and `history.db`
-`0600`. Session cookie jars are `0600`.
+**Storage location.** History lives in the OS data dir — `%LOCALAPPDATA%\CurlCommander`
+(Windows), `~/Library/Application Support/CurlCommander` (macOS),
+`~/.local/share/curlcommander` (Linux, respects `XDG_DATA_HOME`). Set
+`CURLCOMMANDER_HOME` to override it (portable/CI use). A legacy
+`~/.curlcommander` from earlier versions is migrated automatically on first run.
+
+**File permissions.** The app dir is created `0700` and `history.db` `0600`
+(session cookie jars `0600`) on POSIX. **On Windows** `chmod` only toggles the
+read-only bit — it does not restrict other local users — so on Windows the real
+protection for the history is **secret redaction** (enabled by default); do not
+disable it with `--no-redact` on a shared machine.
 
 **Operational safety for pentests.** `--scope scope.txt` refuses any target not
 in the allowlist. `--dry-run` shows the exact bytes without sending.
@@ -190,7 +199,8 @@ a history table (replay / show-curl / delete).
 
 ## 5. History storage
 
-Requests are stored in `~/.curlcommander/history.db` (SQLite, `0600`). The full
+Requests are stored in the OS data dir (see Storage location above) as
+`history.db` (SQLite, `0600` on POSIX). The full
 request is kept as a redacted `config_json` snapshot so replay is lossless;
 schema upgrades run automatically via `PRAGMA user_version`.
 
