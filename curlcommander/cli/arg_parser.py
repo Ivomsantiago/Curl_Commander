@@ -45,6 +45,7 @@ def build_request_parser() -> argparse.ArgumentParser:
 
     raw = parser.add_argument_group("raw / pentest control")
     raw.add_argument("--raw-request", metavar="PATH", help="Send a raw HTTP block byte-for-byte over a socket")
+    raw.add_argument("--no-fix-length", action="store_true", help="Never recompute Content-Length for --raw-request")
     raw.add_argument("--raw-path", action="store_true", help="Send the URL path byte-faithful (no normalization)")
     raw.add_argument(
         "--no-default-headers", action="store_true", help="Do not send httpx default headers (UA/Accept/...)"

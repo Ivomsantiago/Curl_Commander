@@ -70,6 +70,52 @@ def serialize_request(config: RequestConfig, no_default_headers: bool = False) -
     return head.encode("latin-1", errors="replace") + body_bytes
 
 
+def _split_head_body(raw: bytes) -> tuple[bytes, bytes, bytes]:
+    for sep in (b"\r\n\r\n", b"\n\n"):
+        idx = raw.find(sep)
+        if idx != -1:
+            return raw[:idx], sep, raw[idx + len(sep) :]
+    return raw, b"", b""
+
+
+def is_smuggling_shaped(raw: bytes) -> bool:
+    """True if the request looks like a deliberate smuggling/desync payload.
+
+    Chunked transfer-encoding, or more than one Content-Length, or both a
+    Content-Length and a Transfer-Encoding present. Such requests must never be
+    "helpfully" rewritten --- their broken framing is the test.
+    """
+    head, _, _ = _split_head_body(raw)
+    lowered = head.replace(b"\r\n", b"\n").lower()
+    has_te = b"\ntransfer-encoding:" in b"\n" + lowered
+    cl_count = (b"\n" + lowered).count(b"\ncontent-length:")
+    return has_te or cl_count > 1
+
+
+def fix_content_length(raw: bytes) -> bytes:
+    """Recompute a single Content-Length header to match the actual body.
+
+    Only touches a lone existing Content-Length; leaves everything else byte
+    for byte. Callers must gate this behind :func:`is_smuggling_shaped`.
+    """
+    head, sep, body = _split_head_body(raw)
+    if not sep:
+        return raw
+    newline = b"\r\n" if b"\r\n" in head else b"\n"
+    lines = head.split(newline)
+    out = []
+    replaced = False
+    for line in lines:
+        if line[:15].lower() == b"content-length:" and not replaced:
+            out.append(b"Content-Length: " + str(len(body)).encode())
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        return raw
+    return newline.join(out) + sep + body
+
+
 def send_raw(
     raw: bytes,
     host: str,
