@@ -86,6 +86,8 @@ def run_cli(args) -> int:
                 return _run_discover(args)
             case "bounty-scan":
                 return _run_bounty_scan(args)
+            case "validate":
+                return _run_validate(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -508,6 +510,75 @@ def _run_discover(args) -> int:
     )
     _print_fuzz_table(results, f"Discovery — {len(results)} hits")
     return EXIT_OK
+
+
+def _run_validate(args) -> int:
+    """`curlcmd validate <kind> <url>` — HTTP or browser-executed validators."""
+    kind = args.kind
+    scope_entries = scope.load_scope(args.scope) if getattr(args, "scope", None) else []
+    if scope_entries:
+        scope.enforce(args.url, scope_entries)
+    if not getattr(args, "engagement", None):
+        _console.print("[red]Refused:[/red] validate requires --engagement LABEL (authorization).")
+        return EXIT_USAGE
+
+    verify = not getattr(args, "no_verify", False)
+    timeout = getattr(args, "timeout", 30.0)
+    evidence_dir = getattr(args, "evidence", None)
+    shot = str(Path(evidence_dir) / f"{kind}.png") if evidence_dir else None
+    if evidence_dir:
+        Path(evidence_dir).mkdir(parents=True, exist_ok=True)
+
+    from curlcommander.core import browser
+
+    try:
+        if kind == "cors":
+            from curlcommander.core.validators.cors import validate_cors
+
+            result = asyncio.run(validate_cors(args.url, origin=args.origin, verify_ssl=verify, timeout=timeout))
+        elif kind == "open-redirect":
+            from curlcommander.core.validators.redirect import validate_open_redirect
+
+            result = asyncio.run(validate_open_redirect(args.url, verify_ssl=verify, timeout=timeout))
+        else:
+            browser.require_browser()
+            result = asyncio.run(_run_browser_validator(kind, args, scope_entries, shot))
+    except browser.BrowserError as exc:
+        _console.print(f"[yellow]{exc}[/yellow]")
+        return EXIT_USAGE
+
+    colour = {"CONFIRMED": "red", "REFLECTED": "yellow", "NOT_VULNERABLE": "green", "ERROR": "red"}.get(
+        result.verdict, "white"
+    )
+    _console.print(f"[{colour} bold]{result.verdict}[/{colour} bold] {kind}: {result.detail} [dim]({result.url})[/dim]")
+    if result.payload:
+        _console.print(f"[dim]payload:[/dim] {result.payload}")
+    if shot and result.evidence.get("screenshot"):
+        _console.print(f"[green]screenshot →[/green] {shot}")
+    return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
+
+
+async def _run_browser_validator(kind: str, args, scope_entries, shot):
+    from curlcommander.core.browser import BrowserSession
+
+    async with BrowserSession(
+        headless=not getattr(args, "headed", False),
+        scope_entries=scope_entries,
+        timeout_ms=int(getattr(args, "timeout", 30.0) * 1000),
+    ) as session:
+        if kind == "xss":
+            from curlcommander.core.validators.xss import validate_xss
+
+            return await validate_xss(session, args.url, screenshot_path=shot)
+        if kind == "clickjacking":
+            from curlcommander.core.validators.clickjacking import validate_clickjacking
+
+            return await validate_clickjacking(session, args.url, screenshot_path=shot)
+        if kind == "csrf":
+            from curlcommander.core.validators.csrf import validate_csrf
+
+            return await validate_csrf(session, args.url, screenshot_path=shot)
+        raise ValueError(f"unknown validator: {kind}")
 
 
 def _run_bounty_scan(args) -> int:

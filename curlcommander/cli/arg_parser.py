@@ -242,6 +242,18 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     disc.add_argument("--no-verify", action="store_true")
     disc.add_argument("--timeout", type=float, default=30.0)
 
+    # validate (browser-executed / HTTP vulnerability validators)
+    val = subparsers.add_parser("validate", help="Validate a vulnerability (browser/HTTP)")
+    val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf"])
+    val.add_argument("url", help="Target URL (use §PAYLOAD§/§DEST§ markers where relevant)")
+    val.add_argument("--engagement", metavar="LABEL", help="Authorization label (required)")
+    val.add_argument("--scope", metavar="PATH")
+    val.add_argument("--origin", metavar="ORIGIN", default="https://evil.example", help="CORS attacker origin")
+    val.add_argument("--headed", action="store_true", help="Show the browser window")
+    val.add_argument("--evidence", metavar="DIR", help="Save screenshot/DOM/HAR here")
+    val.add_argument("--no-verify", action="store_true")
+    val.add_argument("--timeout", type=float, default=30.0)
+
     # bounty-scan (discover + per-category fuzz, consolidated by severity)
     bounty = subparsers.add_parser("bounty-scan", help="Chained discovery + payload fuzz profile")
     bounty.add_argument("url", help="Target URL")
@@ -267,5 +279,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "payloads",
         "discover",
         "bounty-scan",
+        "validate",
     }
 )
