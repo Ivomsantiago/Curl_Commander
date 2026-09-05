@@ -224,6 +224,35 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     p_show.add_argument("--count", action="store_true", help="Only print the total count")
     p_show.add_argument("--all", action="store_true", dest="all_sources", help="Use all synced sources")
 
+    # discover (content discovery via the fuzz engine)
+    disc = subparsers.add_parser("discover", help="Content discovery / dirbusting against a URL")
+    disc.add_argument("url", help="Base URL")
+    disc.add_argument("-w", "--wordlist", action="append", dest="wordlists", default=[], metavar="SPEC")
+    disc.add_argument("--payloads", action="append", dest="payloads", default=[], metavar="CAT")
+    disc.add_argument("-e", "--extensions", metavar="EXT", help="Comma-separated extensions (php,bak,old)")
+    disc.add_argument("--recurse", type=int, default=0, metavar="DEPTH", help="Shallow recursion depth")
+    disc.add_argument("--concurrency", type=int, default=20, metavar="N")
+    disc.add_argument("--rate", type=float, default=0.0, metavar="R")
+    disc.add_argument("--mc", metavar="CODES")
+    disc.add_argument("--fc", metavar="CODES", default="404")
+    disc.add_argument("--ms", type=int, metavar="N")
+    disc.add_argument("--fs", type=int, metavar="N")
+    disc.add_argument("--mr", metavar="REGEX")
+    disc.add_argument("--scope", metavar="PATH")
+    disc.add_argument("--no-verify", action="store_true")
+    disc.add_argument("--timeout", type=float, default=30.0)
+
+    # bounty-scan (discover + per-category fuzz, consolidated by severity)
+    bounty = subparsers.add_parser("bounty-scan", help="Chained discovery + payload fuzz profile")
+    bounty.add_argument("url", help="Target URL")
+    bounty.add_argument("--scope", metavar="PATH")
+    bounty.add_argument("--engagement", metavar="LABEL", help="Authorization label (required)")
+    bounty.add_argument("--categories", metavar="LIST", default="xss,sqli,traversal,ssti")
+    bounty.add_argument("--concurrency", type=int, default=10)
+    bounty.add_argument("--rate", type=float, default=0.0)
+    bounty.add_argument("--no-verify", action="store_true")
+    bounty.add_argument("--timeout", type=float, default=30.0)
+
     return parser
 
 
@@ -236,5 +265,7 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "delete-history",
         "clear-history",
         "payloads",
+        "discover",
+        "bounty-scan",
     }
 )

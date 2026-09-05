@@ -23,6 +23,13 @@ from curlcommander.core.api_styles import (
 from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
+from curlcommander.core.discovery import (
+    BountyReport,
+    Candidate,
+    category_fuzz,
+    discover,
+    severity_of,
+)
 from curlcommander.core.evidence import compose_raw_response, save_evidence
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
@@ -75,6 +82,10 @@ def run_cli(args) -> int:
                 return EXIT_OK
             case "payloads":
                 return _run_payloads(args)
+            case "discover":
+                return _run_discover(args)
+            case "bounty-scan":
+                return _run_bounty_scan(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -434,6 +445,127 @@ def _run_payloads(args) -> int:
         return EXIT_OK
     _console.print("[red]Error:[/red] unknown payloads subcommand")
     return EXIT_USAGE
+
+
+def _discover_filters(args) -> FuzzFilters:
+    return FuzzFilters(
+        match_codes=_int_set(getattr(args, "mc", None)),
+        filter_codes=_int_set(getattr(args, "fc", None)) or {404},
+        match_size=getattr(args, "ms", None),
+        filter_size=getattr(args, "fs", None),
+        match_regex=getattr(args, "mr", None),
+    )
+
+
+def _print_fuzz_table(results, title: str) -> None:
+    table = Table(title=title)
+    table.add_column("Path/Payload", overflow="fold")
+    table.add_column("Status", justify="center")
+    table.add_column("Size", justify="right")
+    table.add_column("ms", justify="right")
+    table.add_column("", justify="center")
+    for r in results:
+        style = _status_style(r.status_code)
+        table.add_row(
+            " / ".join(r.payloads),
+            f"[{style}]{r.status_code or 'ERR'}[/{style}]",
+            str(r.size_bytes),
+            f"{r.duration_ms:.0f}",
+            "[bold yellow]★[/bold yellow]" if r.anomaly else "",
+        )
+    _console.print(table)
+
+
+def _run_discover(args) -> int:
+    if getattr(args, "scope", None):
+        scope.enforce(args.url, scope.load_scope(args.scope))
+    try:
+        words: list[str] = []
+        for spec in getattr(args, "wordlists", []) or []:
+            words += payload_catalog.resolve_spec(spec)
+        for cat in getattr(args, "payloads", []) or []:
+            words += payload_catalog.load_category(cat)
+    except payload_catalog.CatalogError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        return EXIT_USAGE
+    if not words:
+        _console.print("[red]Error:[/red] provide -w SPEC or --payloads CAT for discovery.")
+        return EXIT_USAGE
+
+    exts = [e for e in (getattr(args, "extensions", None) or "").split(",") if e] or None
+    results = asyncio.run(
+        discover(
+            args.url,
+            words,
+            extensions=exts,
+            filters=_discover_filters(args),
+            concurrency=getattr(args, "concurrency", 20),
+            rate=getattr(args, "rate", 0.0),
+            recurse=getattr(args, "recurse", 0),
+            verify_ssl=not getattr(args, "no_verify", False),
+            timeout=getattr(args, "timeout", 30.0),
+        )
+    )
+    _print_fuzz_table(results, f"Discovery — {len(results)} hits")
+    return EXIT_OK
+
+
+def _run_bounty_scan(args) -> int:
+    if getattr(args, "scope", None):
+        scope.enforce(args.url, scope.load_scope(args.scope))
+    if not getattr(args, "engagement", None):
+        _console.print("[red]Refused:[/red] bounty-scan requires --engagement LABEL (authorization).")
+        return EXIT_USAGE
+
+    report = BountyReport(url=args.url)
+    categories = [c.strip() for c in (args.categories or "").split(",") if c.strip()]
+    param_url = args.url + ("&" if "?" in args.url else "?") + "fuzzcc=FUZZ"
+
+    for cat in categories:
+        try:
+            payloads_list = payload_catalog.load_category(cat, all_sources=True)
+        except payload_catalog.CatalogError:
+            continue
+        if not payloads_list:
+            continue
+        results = asyncio.run(
+            category_fuzz(
+                param_url,
+                cat,
+                payloads_list,
+                concurrency=getattr(args, "concurrency", 10),
+                rate=getattr(args, "rate", 0.0),
+                verify_ssl=not getattr(args, "no_verify", False),
+                timeout=getattr(args, "timeout", 30.0),
+            )
+        )
+        for r in results:
+            if r.anomaly:
+                report.candidates.append(
+                    Candidate(
+                        cat,
+                        severity_of(cat),
+                        r.payloads[-1],
+                        r.status_code,
+                        r.size_bytes,
+                        note="anomalous response vs baseline",
+                    )
+                )
+
+    buckets = report.by_severity()
+    total = sum(len(v) for v in buckets.values())
+    _console.print(
+        f"[bold]bounty-scan[/bold] {args.url} — {total} candidate(s) [dim](engagement {args.engagement})[/dim]"
+    )
+    for sev in ("high", "medium", "low"):
+        for c in buckets.get(sev, []):
+            colour = {"high": "red", "medium": "yellow", "low": "cyan"}[sev]
+            _console.print(
+                f"[{colour}]{sev.upper()}[/{colour}] {c.category}: {c.payload!r} → {c.status_code} ({c.size_bytes} B)"
+            )
+    if total == 0:
+        _console.print("[dim]No anomalies flagged. Candidates are leads to investigate, not confirmations.[/dim]")
+    return EXIT_OK
 
 
 def _int_set(value: str | None) -> set[int] | None:
