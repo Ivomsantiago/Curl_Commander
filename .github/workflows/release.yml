@@ -23,6 +23,7 @@ jobs:
           - { os: macos-13,       asset: curlcmd-macos-x86_64,    exe: curlcmd }
           - { os: macos-14,       asset: curlcmd-macos-arm64,     exe: curlcmd }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,6 +61,7 @@ jobs:
   release:
     needs: build-binary
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -79,6 +81,7 @@ jobs:
   publish-pypi:
     needs: gate
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: pypi
     permissions:
       id-token: write   # OIDC trusted publishing (no stored token)
