@@ -33,10 +33,9 @@ def browser_available() -> bool:
 
 def require_browser() -> None:
     if not browser_available():
-        raise BrowserError(
-            "the browser feature needs the optional extra: pip install 'curlcommander[browser]' "
-            "&& playwright install chromium"
-        )
+        from curlcommander.core import features
+
+        raise BrowserError(features.missing_message("browser"))
 
 
 def chromium_executable() -> str | None:

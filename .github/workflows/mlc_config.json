@@ -1,0 +1,9 @@
+{
+    "ignorePatterns": [
+        { "pattern": "^https://raw\\.githubusercontent\\.com/" },
+        { "pattern": "^https://github\\.com/Ivomsantiago/Curl_Commander/releases" },
+        { "pattern": "^https://github\\.com/Ivomsantiago/Curl_Commander/actions" },
+        { "pattern": "^https://img\\.shields\\.io/" }
+    ],
+    "aliveStatusCodes": [200, 206, 429]
+}

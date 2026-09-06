@@ -4,6 +4,40 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Não lançado] — Instalação impecável & onboarding em PT-BR
+
+_Esta seção está em português; as anteriores permanecem no idioma original._
+
+### Instalação e onboarding
+- **Registro central de recursos opcionais** (`core/features.py`): fonte única
+  da verdade para navegador/proxy/socks/área de transferência, com os imports
+  que detectam cada um e os pacotes que os fornecem. Recursos ausentes agora
+  geram uma mensagem única e acionável em português apontando `curlcmd setup
+  --<recurso>` (com variante para o binário standalone).
+- **`curlcmd setup`** (`--all/--browser/--proxy/--socks/--clipboard/--payloads/
+  --yes`): instala os extras opcionais e as fontes de payloads. Idempotente,
+  mostra o plano e a rede/PyPI que vai tocar antes de agir, confirma
+  interativamente (ou `--yes`), recusa em terminal não interativo sem `--yes` e
+  explica que os extras precisam de Python quando rodado no binário standalone.
+- **`curlcmd doctor`** (`--fix`): diagnostica versão do Python, diretório de
+  dados gravável, método de instalação, cada recurso opcional, Chromium e fontes
+  de payloads; sai com código diferente de zero só em falha essencial.
+- **`curlcmd self-update`** (`--yes`): atualiza pelo método detectado
+  (pipx/uv/pip) ou orienta o caminho do binário. `--version` passa a mostrar o
+  método de instalação.
+- **Instaladores remotos de uma linha** (`scripts/install.sh`,
+  `scripts/install.ps1`): `curl|sh` e `irm|iex`. Escolhem `uv tool` → `pipx` →
+  venv gerenciado com atalho `curlcmd`, resolvem o PATH, são idempotentes e
+  aceitam `--yes`/`-Yes`. `CURLCMD_SOURCE` instala a partir de um checkout local
+  (usado pela CI).
+- **Manifestos de pacote**: winget (`packaging/winget/`, modelo preenchido no
+  release) e Scoop (`bucket/curlcommander.json`, com `checkver` + `autoupdate`).
+
+### Documentação
+- README traduzido para PT-BR com o original em `README.en.md` e troca de idioma
+  no topo; `docs/COMECE-AQUI.md` (guia rápido); `CONTRIBUTING.md` em PT-BR;
+  mensagens de CLI/`setup`/`doctor`/erros de extra em português.
+
 ## [Unreleased] — Bug-bounty payloads & browser/proxy validation
 
 ### Phase G — payloads for bug bounty

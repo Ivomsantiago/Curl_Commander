@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+#
+# Manifesto winget (arquivo de versão). Este diretório é um MODELO: o processo
+# de release preenche a versão e os hashes SHA256 reais dos binários publicados
+# antes de submeter ao repositório winget-pkgs. Veja packaging/winget/README.md.
+PackageIdentifier: Ivomsantiago.CurlCommander
+PackageVersion: 0.2.0
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

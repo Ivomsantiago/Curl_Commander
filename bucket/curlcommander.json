@@ -1,0 +1,31 @@
+{
+    "version": "0.2.0",
+    "description": "Construtor de requisições HTTP e gerador de curl para testes de API/AppSec, no terminal.",
+    "homepage": "https://github.com/Ivomsantiago/Curl_Commander",
+    "license": "MIT",
+    "notes": [
+        "Este manifesto instala o binário standalone (curlcmd.exe).",
+        "Recursos que dependem de Python (navegador/proxy/payloads) exigem uma instalação via Python: veja 'curlcmd doctor'.",
+        "O campo 'hash' é preenchido automaticamente pelo 'scoop update' via autoupdate; ao editar a versão à mão, atualize o hash a partir do arquivo SHA256SUMS da release."
+    ],
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/Ivomsantiago/Curl_Commander/releases/download/v0.2.0/curlcmd.exe",
+            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+    },
+    "bin": "curlcmd.exe",
+    "checkver": {
+        "github": "https://github.com/Ivomsantiago/Curl_Commander"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Ivomsantiago/Curl_Commander/releases/download/v$version/curlcmd.exe"
+            }
+        },
+        "hash": {
+            "url": "https://github.com/Ivomsantiago/Curl_Commander/releases/download/v$version/SHA256SUMS"
+        }
+    }
+}
