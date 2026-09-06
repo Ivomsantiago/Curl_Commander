@@ -71,28 +71,69 @@ def _run(argv: list[str]) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _ask_yes_no(question: str, default_yes: bool) -> bool:
+    """Interactive yes/no with a default; the default answer on empty input."""
+    suffix = "[S/n]" if default_yes else "[s/N]"
+    try:
+        answer = input(f"{question} {suffix} ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return default_yes
+    if not answer:
+        return default_yes
+    return answer in ("s", "sim", "y", "yes")
+
+
+def _interactive_select() -> tuple[list[str], bool]:
+    """Ask, group by group, what to install (payloads default yes; rest ask)."""
+    _console.print("\n[bold]Vamos preparar o curlcmd.[/bold] Responda o que deseja habilitar:")
+    want_payloads = _ask_yes_no("Baixar as wordlists de payloads (SecLists etc.)?", default_yes=True)
+    selected: list[str] = []
+    for name in _FEATURE_FLAGS:
+        feat = features.FEATURES[name]
+        if features.available(name):
+            continue  # already installed — don't ask
+        if _ask_yes_no(f"Instalar {feat.label}?", default_yes=False):
+            selected.append(name)
+    return selected, want_payloads
+
+
 def run_setup(args) -> int:
-    """`curlcmd setup [--all|--browser|--proxy|--socks|--clipboard] [--payloads] [--yes]`."""
+    """`curlcmd setup [--all|--browser|--proxy|--socks|--clipboard] [--payloads] [--yes]`.
+
+    Sem flags e num terminal interativo, pergunta grupo a grupo o que instalar
+    (payloads = sim por padrão; o resto = pergunta). ``--yes`` sem outras flags
+    equivale a ``--all --yes`` (setup completo não-interativo).
+    """
     assume_yes = getattr(args, "yes", False)
-    want_payloads = getattr(args, "payloads", False) or getattr(args, "all", False)
+    all_flag = getattr(args, "all", False)
     selected = _selected_features(args)
+    want_payloads = getattr(args, "payloads", False) or all_flag
+
+    # `--yes` sem nenhuma seleção explícita == `--all --yes`.
+    if assume_yes and not selected and not all_flag and not getattr(args, "payloads", False):
+        all_flag = True
+    if all_flag:
+        selected = [n for n in _FEATURE_FLAGS if not features.is_frozen()]
+        want_payloads = True
 
     _console.print(
         f"[bold]curlcmd setup[/bold] — método de instalação detectado: [cyan]{features.install_method()}[/cyan]"
     )
 
-    if not selected and not want_payloads:
-        # Base bootstrap: nothing heavy requested. Report status + next steps.
-        _print_feature_status()
-        _console.print(
-            "\n[green]Base pronta.[/green] Para habilitar recursos opcionais rode, por exemplo:\n"
-            "  [bold]curlcmd setup --browser[/bold]   (validadores em navegador)\n"
-            "  [bold]curlcmd setup --proxy[/bold]     (proxy interceptador)\n"
-            "  [bold]curlcmd setup --payloads[/bold]  (baixar wordlists SecLists/etc.)\n"
-            "  [bold]curlcmd setup --all[/bold]       (tudo de uma vez)\n"
-            "Use [bold]curlcmd doctor[/bold] para diagnosticar a instalação."
-        )
-        return EXIT_OK
+    # Nothing chosen and not --yes: run the real interactive flow (or, on a
+    # non-TTY, explain how to run it non-interactively — never a silent no-op).
+    if not selected and not want_payloads and not assume_yes:
+        if not sys.stdin.isatty():
+            _print_feature_status()
+            _console.print(
+                "\n[yellow]Sem terminal interativo.[/yellow] Rode [bold]curlcmd setup --yes[/bold] "
+                "(instala tudo) ou escolha grupos: [bold]--payloads/--browser/--proxy/--socks[/bold]."
+            )
+            return EXIT_OK
+        selected, want_payloads = _interactive_select()
+        if not selected and not want_payloads:
+            _console.print("[dim]Nada selecionado. Nada a fazer.[/dim]")
+            return EXIT_OK
 
     if features.is_frozen() and selected:
         _console.print(
@@ -125,7 +166,7 @@ def _install_features(selected: list[str], assume_yes: bool) -> bool:
     missing = [name for name in selected if not features.available(name)]
     already = [name for name in selected if features.available(name)]
     for name in already:
-        _console.print(f"[green]✓[/green] {features.FEATURES[name].label} já disponível — nada a fazer.")
+        _console.print(f"[green]OK[/green] {features.FEATURES[name].label} já disponível — nada a fazer.")
 
     if not missing:
         # Still run post-install steps that may be pending (e.g. chromium).
@@ -134,7 +175,7 @@ def _install_features(selected: list[str], assume_yes: bool) -> bool:
     packages = features.packages_for(missing)
     _console.print(
         "\nVou instalar os pacotes abaixo com pip (baixando do PyPI pela rede):\n"
-        + "\n".join(f"  • {pkg}" for pkg in packages)
+        + "\n".join(f"  - {pkg}" for pkg in packages)
     )
     if not _confirm("Prosseguir com a instalação?", assume_yes):
         return False
@@ -168,7 +209,7 @@ def _run_post_install(names: list[str], assume_yes: bool) -> bool:
                     "[bold]python -m playwright install chromium[/bold]"
                 )
         elif browser.browser_available():
-            _console.print("[green]✓[/green] Chromium já disponível.")
+            _console.print("[green]OK[/green] Chromium já disponível.")
     return ok
 
 
@@ -183,7 +224,7 @@ def _sync_payloads(assume_yes: bool) -> bool:
     try:
         for name in payload_sources.load_sources():
             dest = payload_sources.sync(name)
-            _console.print(f"[green]sincronizado[/green] {name} → {dest}")
+            _console.print(f"[green]sincronizado[/green] {name} -> {dest}")
     except payload_sources.PayloadSourceError as exc:
         _console.print(f"[red]Erro ao sincronizar payloads:[/red] {exc}")
         ok = False
@@ -298,6 +339,22 @@ def _gather_checks() -> list[Check]:
                 fix_hint="" if synced else "curlcmd setup --payloads",
             )
         )
+        # Freshness (0.3): a synced source not refreshed in > STALE_AFTER_DAYS.
+        if synced:
+            stale = payload_sources.stale_sources()
+            checks.append(
+                Check(
+                    name="Frescor das wordlists",
+                    ok=not stale,
+                    detail=(
+                        f"desatualizadas (> {payload_sources.STALE_AFTER_DAYS} dias): {', '.join(stale)}"
+                        if stale
+                        else "atualizadas"
+                    ),
+                    essential=False,
+                    fix_hint="" if not stale else "curlcmd payloads update",
+                )
+            )
     except Exception:  # pragma: no cover - payload module optional at runtime
         pass
 
@@ -315,7 +372,7 @@ def run_doctor(args) -> int:
     table.add_column("Detalhe", overflow="fold")
     table.add_column("Correção", overflow="fold")
     for c in checks:
-        mark = "[green]✓[/green]" if c.ok else ("[red]✗[/red]" if c.essential else "[yellow]○[/yellow]")
+        mark = "[green]OK[/green]" if c.ok else ("[red]X[/red]" if c.essential else "[yellow]![/yellow]")
         table.add_row(mark, c.name, c.detail, "" if c.ok else c.fix_hint)
     _console.print(table)
 
@@ -417,6 +474,6 @@ def _print_feature_status() -> None:
     for name in _FEATURE_FLAGS:
         feat = features.FEATURES[name]
         avail = features.available(name)
-        mark = "[green]✓[/green]" if avail else "[yellow]○[/yellow]"
+        mark = "[green]OK[/green]" if avail else "[yellow]![/yellow]"
         table.add_row(mark, feat.label, "" if avail else f"curlcmd setup --{name}")
     _console.print(table)

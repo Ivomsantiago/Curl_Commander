@@ -32,7 +32,7 @@ async def stream_send(config: RequestConfig, on_line: Callable[[str], None]) -> 
                 resolved.method,
                 resolved.url,
                 headers=resolved.headers.as_tuples(),
-                params=resolved.params.as_tuples(),  # type: ignore[arg-type]
+                params=resolved.params.as_tuples() or None,  # type: ignore[arg-type]
                 content=resolved.body.encode() if resolved.body else None,
             ) as response:
                 count = 0
@@ -117,7 +117,9 @@ async def send(config: RequestConfig) -> ResponseResult:
                     method=resolved.method,
                     url=resolved.url,
                     headers=resolved.headers.as_tuples(),
-                    params=resolved.params.as_tuples(),  # type: ignore[arg-type]
+                    # Pass params only when present: an empty list makes httpx
+                    # clear a query string already in the URL (id=1&id=2 → gone).
+                    params=resolved.params.as_tuples() or None,  # type: ignore[arg-type]
                     content=content,
                     data=multipart_data,
                     files=multipart_files,

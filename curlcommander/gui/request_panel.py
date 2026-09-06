@@ -128,10 +128,16 @@ class RequestPanel(Widget):
             with Horizontal(id="options-row-2"):
                 yield Checkbox("Verify TLS", value=True, id="verify-checkbox")
                 yield Checkbox("Follow redirects", value=True, id="redirects-checkbox")
+                yield Checkbox("HTTP/2", value=False, id="http2-checkbox")
+                yield Checkbox("Compressed", value=False, id="compressed-checkbox")
+            yield Label("Cookies  (k=v; k2=v2)")
+            yield Input(placeholder="sessao=abc; lang=pt", id="cookies-input")
 
             with Horizontal(id="button-row"):
-                yield Button("Send", id="send-btn", variant="primary")
-                yield Button("Curl Only", id="curl-only-btn")
+                yield Button("Enviar", id="send-btn", variant="primary")
+                yield Button("Só curl", id="curl-only-btn")
+                yield Button("Limpar", id="clear-btn")
+                yield Button("Sair", id="quit-btn", variant="error")
 
     # ------------------------------------------------------------------
     # Event handlers — propagate config changes to parent
@@ -188,6 +194,12 @@ class RequestPanel(Widget):
         auth_type = self._select_value("auth-type-select", "none")
         auth_value = self.query_one("#auth-value-input", Input).value
 
+        cookies = HeaderList()
+        for pair in self.query_one("#cookies-input", Input).value.split(";"):
+            if "=" in pair:
+                k, _, v = pair.partition("=")
+                cookies.append(k.strip(), v.strip())
+
         # Resolve {{VAR}} references from the environment (2.13 env substitution).
         env = dict(os.environ)
         url = reveal_text(url, env)
@@ -205,11 +217,14 @@ class RequestPanel(Widget):
             body_type=body_type,
             auth_type=auth_type,
             auth_value=auth_value,
+            cookies=cookies,
             proxy=self.query_one("#proxy-input", Input).value.strip(),
             max_retries=_to_int(self.query_one("#retries-input", Input).value, 0),
             timeout=_to_float(self.query_one("#timeout-input", Input).value, 30.0),
             verify_ssl=self.query_one("#verify-checkbox", Checkbox).value,
             follow_redirects=self.query_one("#redirects-checkbox", Checkbox).value,
+            http2=self.query_one("#http2-checkbox", Checkbox).value,
+            compressed=self.query_one("#compressed-checkbox", Checkbox).value,
         )
 
     def set_config(self, config: RequestConfig) -> None:
@@ -233,6 +248,9 @@ class RequestPanel(Widget):
         self.query_one("#retries-input", Input).value = str(config.max_retries)
         self.query_one("#verify-checkbox", Checkbox).value = config.verify_ssl
         self.query_one("#redirects-checkbox", Checkbox).value = config.follow_redirects
+        self.query_one("#http2-checkbox", Checkbox).value = config.http2
+        self.query_one("#compressed-checkbox", Checkbox).value = config.compressed
+        self.query_one("#cookies-input", Input).value = "; ".join(f"{k}={v}" for k, v in config.cookies)
 
     def clear_form(self) -> None:
         self.query_one("#method-select", Select).value = "GET"

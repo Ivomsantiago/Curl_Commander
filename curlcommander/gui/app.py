@@ -1,13 +1,18 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.widgets import Footer, Header, TabbedContent, TabPane
 
+from curlcommander import __version__
 from curlcommander.config import DB_PATH
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.http_client import send
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.gui.curl_panel import CurlPanel
 from curlcommander.gui.history_panel import HistoryPanel
+from curlcommander.gui.intruder_panel import IntruderPanel
+from curlcommander.gui.proxy_panel import ProxyPanel
+from curlcommander.gui.repeater_panel import RepeaterPanel
 from curlcommander.gui.request_panel import RequestPanel
 from curlcommander.gui.response_panel import ResponsePanel
 from curlcommander.storage.history_repo import HistoryRepo
@@ -15,6 +20,7 @@ from curlcommander.storage.history_repo import HistoryRepo
 
 class CurlCommanderApp(App):
     TITLE = "CurlCommander"
+    SUB_TITLE = f"v{__version__}"
     CSS = """
     Screen {
         layout: vertical;
@@ -35,18 +41,24 @@ class CurlCommanderApp(App):
     BINDINGS = [
         # Ctrl+Enter is unreliable across terminal emulators; Ctrl+S is the
         # documented, portable primary. Ctrl+Enter kept as a bonus where it works.
-        Binding("ctrl+s", "send_request", "Send", show=True),
-        Binding("ctrl+enter", "send_request", "Send", show=False),
-        Binding("ctrl+y", "copy_curl", "Copy curl", show=True),
-        Binding("ctrl+x", "cancel_request", "Cancel", show=True),
-        Binding("ctrl+l", "clear_form", "Clear Form", show=True),
-        Binding("ctrl+h", "focus_history", "History", show=True),
-        # Ctrl+Q (not bare 'q', which conflicts with typing in inputs).
-        Binding("ctrl+q", "quit", "Quit", show=True),
+        Binding("ctrl+s", "send_request", "Enviar", show=True),
+        Binding("ctrl+enter", "send_request", "Enviar", show=False),
+        Binding("ctrl+y", "copy_curl", "Copiar curl", show=True),
+        Binding("ctrl+x", "cancel_request", "Cancelar", show=True),
+        Binding("ctrl+l", "clear_form", "Limpar", show=True),
+        Binding("ctrl+h", "focus_history", "Histórico", show=True),
+        Binding("ctrl+r", "to_repeater", "→Repeater", show=True),
+        Binding("ctrl+i", "to_intruder", "→Intruder", show=True),
+        # Sair: Ctrl+Q e Ctrl+C, com priority para pegar mesmo com foco num
+        # Input/TextArea (o widget focado consome o resto, não estes atalhos).
+        Binding("ctrl+q", "quit", "Sair", show=True, priority=True),
+        Binding("ctrl+c", "quit", "Sair", show=False, priority=True),
     ]
 
     _last_curl: str = ""
     _last_content: bytes = b""
+    _in_flight: bool = False
+    _quit_armed: bool = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -65,17 +77,69 @@ class CurlCommanderApp(App):
     # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        with Vertical():
-            with Horizontal(id="top-area"):
-                yield RequestPanel(id="request-panel")
-                with Vertical(id="right-area"):
-                    yield ResponsePanel(id="response-panel")
-                    yield CurlPanel(id="curl-panel")
-            yield HistoryPanel(id="history-panel")
+        yield Header(show_clock=False)
+        with TabbedContent(initial="tab-request", id="main-tabs"):
+            with TabPane("Requisição", id="tab-request"):
+                with Vertical():
+                    with Horizontal(id="top-area"):
+                        yield RequestPanel(id="request-panel")
+                        with Vertical(id="right-area"):
+                            yield ResponsePanel(id="response-panel")
+                            yield CurlPanel(id="curl-panel")
+                    yield HistoryPanel(id="history-panel")
+            with TabPane("Repeater", id="tab-repeater"):
+                yield RepeaterPanel(id="repeater-panel")
+            with TabPane("Intruder", id="tab-intruder"):
+                yield IntruderPanel(id="intruder-panel")
+            with TabPane("Proxy", id="tab-proxy"):
+                yield ProxyPanel(id="proxy-panel")
+        yield Footer()
+
+    # ------------------------------------------------------------------
+    # Burp-style routing between tabs
+    # ------------------------------------------------------------------
+
+    def _switch_to(self, tab_id: str) -> None:
+        self.query_one("#main-tabs", TabbedContent).active = tab_id
+
+    def action_to_repeater(self) -> None:
+        """Send the request being built to a new Repeater tab (Ctrl+R)."""
+        config = self.query_one(RequestPanel).get_config()
+        self.query_one(RepeaterPanel).add_request(config)
+        self._switch_to("tab-repeater")
+
+    def action_to_intruder(self) -> None:
+        config = self.query_one(RequestPanel).get_config()
+        self.query_one(IntruderPanel).load_request(config)
+        self._switch_to("tab-intruder")
+
+    def on_proxy_panel_send_to_repeater(self, event: ProxyPanel.SendToRepeater) -> None:
+        self.query_one(RepeaterPanel).add_request(event.config)
+        self._switch_to("tab-repeater")
+
+    def on_proxy_panel_send_to_intruder(self, event: ProxyPanel.SendToIntruder) -> None:
+        self.query_one(IntruderPanel).load_request(event.config)
+        self._switch_to("tab-intruder")
+
+    def on_intruder_panel_promote_to_repeater(self, event: IntruderPanel.PromoteToRepeater) -> None:
+        self.query_one(RepeaterPanel).add_request(event.config)
+        self._switch_to("tab-repeater")
 
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
+
+    def action_quit(self) -> None:  # type: ignore[override]
+        # Confirm quit only while a request is in flight (never blocks normal
+        # exit): first Ctrl+Q arms, second one (or after it finishes) exits.
+        if self._in_flight and not self._quit_armed:
+            self._quit_armed = True
+            self.notify(
+                "Requisição em andamento. Pressione Ctrl+Q de novo para sair mesmo assim.",
+                severity="warning",
+            )
+            return
+        self.exit()
 
     def action_send_request(self) -> None:
         config = self.query_one(RequestPanel).get_config()
@@ -106,6 +170,12 @@ class CurlCommanderApp(App):
         self.query_one(ResponsePanel).query_one("#response-status").update("cancelled")
 
     def on_button_pressed(self, event) -> None:
+        if event.button.id == "quit-btn":
+            self.action_quit()
+            return
+        if event.button.id == "clear-btn":
+            self.action_clear_form()
+            return
         if event.button.id != "save-response-btn":
             return
         if not self._last_content:
@@ -154,9 +224,14 @@ class CurlCommanderApp(App):
         self.query_one(CurlPanel).update_curl(curl_cmd)
 
         # Sending indicator (Ctrl+X cancels the exclusive worker).
-        self.query_one(ResponsePanel).query_one("#response-status").update("⏳ sending…")
+        self._in_flight = True
+        self.query_one(ResponsePanel).query_one("#response-status").update("⏳ enviando…")
 
-        result = await send(config)
+        try:
+            result = await send(config)
+        finally:
+            self._in_flight = False
+            self._quit_armed = False
         self._last_content = result.content
         self.query_one(ResponsePanel).show_result(result)
 

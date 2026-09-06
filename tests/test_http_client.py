@@ -6,6 +6,18 @@ from curlcommander.core.request_model import RequestConfig
 
 
 @respx.mock
+async def test_query_string_in_url_is_preserved():
+    # A query typed directly in the URL must survive (empty params must not
+    # wipe it) — curl keeps it, so we must too.
+    seen: list[str] = []
+    respx.get(url__regex=r"https://x/p.*").mock(
+        side_effect=lambda r: seen.append(str(r.url)) or httpx.Response(200, text="ok")
+    )
+    await send(RequestConfig(method="GET", url="https://x/p?id=1&id=2"))
+    assert seen and "id=1" in seen[0] and "id=2" in seen[0]
+
+
+@respx.mock
 async def test_successful_get():
     respx.get("https://example.com/").mock(
         return_value=httpx.Response(200, text="Hello", headers={"content-type": "text/plain"})

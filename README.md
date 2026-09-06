@@ -26,6 +26,41 @@ Python 3.11+ · `httpx` · `rich` · `prompt_toolkit` · `textual`.
 
 ---
 
+## Por que não só curl?
+
+`curl` é imbatível para uma requisição pontual e para script. Ele perde quando o
+trabalho é iterativo, com estado, repetível e investigativo — o dia a dia de
+quem testa API e faz bug bounty. A tabela abaixo lista só o que no curl puro dói
+ou é impossível, com o comando/atalho real aqui (`GUI` = na interface `curlcmd
+--gui`; `CLI` = na linha de comando):
+
+| Tarefa | curl puro | CurlCommander |
+|--------|-----------|---------------|
+| Editar 1 header e reenviar | reescrever a linha inteira | **GUI** aba Repeater: edita e reenvia; histórico de reenvios na aba |
+| Fuzzing com posições e filtros | `ffuf`/`wfuzz` à parte | **GUI** aba Intruder (§marca§ posição, 4 modos, grade ordenável) · **CLI** `-w lista "…/FUZZ" --mc 200` |
+| Interceptar o navegador | Burp/mitmproxy à parte | **GUI** aba Proxy: captura ao vivo + "enviar para Repeater/Intruder" |
+| Analisar segurança da resposta | nada | **GUI** botão Analisar (headers/cookies/CORS/erros → candidatos) |
+| Lembrar o que foi enviado | o shell esquece | **CLI** `curlcmd history` (SQLite pesquisável), `replay <id>` |
+| Mesma requisição em dev/staging/prod | copiar-colar | **CLI** `{{VAR}}` + `--env-file` |
+| Testar (assert + exit code + JUnit) | não existe | **CLI** `--assert-status/-header/-jsonpath --report junit` |
+| Não vazar token no histórico | fica no `~/.bash_history` | redação de segredo antes de persistir (padrão) |
+| Confirmar XSS de verdade | impossível | **CLI** `validate xss … --engagement` (navegador real, extra `[browser]`) |
+
+Exemplos que executam de fato:
+
+```bash
+# fuzzing com filtro por status — no curl exigiria ffuf/xargs:
+curlcmd -w words.txt "https://alvo/FUZZ" --mc 200,301 --fc 404
+
+# testar uma resposta e falhar o pipeline (exit 3) — curl não tem assert:
+curlcmd --assert-status 200 --assert-jsonpath '$.user.id==42' --report junit https://api/x/me
+
+# abrir a interface "Burp na TUI" (Repeater/Intruder/Proxy):
+curlcmd --gui
+```
+
+---
+
 ## Instalação em uma linha
 
 ```bash
@@ -296,20 +331,35 @@ Códigos de saída: `0` ok · `1` uso/parse · `2` rede/DNS/TLS/timeout ·
 curlcmd --gui
 ```
 
-Painel de requisição (método/URL/cabeçalhos/parâmetros/corpo/auth **e** opções:
-proxy, timeout, retentativas, verificação, redirects), um painel de curl gerado
-que atualiza ao vivo, uma resposta em abas (Body / Headers / Raw / Cookies) com
-busca no corpo e salvamento, e uma tabela de histórico (repetir / mostrar-curl /
-apagar).
+A TUI é organizada em abas (um "Burp na TUI"):
+
+- **Requisição** — painel de requisição (método/URL/cabeçalhos/parâmetros/corpo/
+  auth **e** opções: proxy, timeout, retentativas, verificação, redirects,
+  HTTP/2, compressed, cookies), curl gerado ao vivo, resposta em abas (Body /
+  Headers / Raw / Cookies) com busca, e a tabela de histórico.
+- **Repeater** — cada requisição vira uma sub-aba persistente com editor raw
+  livre, reenvio, e histórico de reenvios empilhado para comparar tentativas.
+- **Intruder** — marca posições de ataque (`§…§`), escolhe um dos 4 modos
+  (Sniper / Battering ram / Pitchfork / Cluster bomb) e vê a grade de resultados
+  ordenável, com anomalias destacadas. Promove uma linha para o Repeater.
+- **Proxy** — inicia o proxy interceptador (extra `[proxy]`), lista o tráfego
+  capturado ao vivo (fora do escopo fica esmaecido, não some) e envia qualquer
+  captura para o Repeater ou o Intruder.
+
+O visualizador de resposta das abas novas tem Pretty/Raw/Headers/Cookies, busca
+com contagem navegável ("2/7"), diff entre reenvios e o botão **Analisar**
+(análise passiva de segurança: headers, cookies, CORS, erros → candidatos).
 
 | Tecla | Ação |
 |-------|------|
 | `Ctrl+S` | Enviar (portátil; `Ctrl+Enter` também funciona onde o terminal suporta) |
+| `Ctrl+R` | Enviar a requisição atual para o Repeater · `Ctrl+I` para o Intruder |
 | `Ctrl+Y` | Copiar o curl gerado para a área de transferência |
 | `Ctrl+X` | Cancelar a requisição em andamento |
 | `Ctrl+L` | Limpar formulário · `Ctrl+H` Histórico · `Ctrl+Q` Sair |
 
-Referências `{{VAR}}` no formulário são resolvidas do ambiente ao enviar.
+Os atalhos aparecem no rodapé (Footer) da tela; há também um botão **Sair**
+visível. Referências `{{VAR}}` no formulário são resolvidas do ambiente ao enviar.
 
 ---
 

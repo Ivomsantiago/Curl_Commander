@@ -83,6 +83,41 @@ def test_self_update_frozen_explains(monkeypatch):
     assert onboarding.run_self_update(_ns()) == onboarding.EXIT_OK
 
 
+def test_setup_yes_no_flags_installs_everything(monkeypatch):
+    # `--yes` with no other flags == `--all --yes` (full non-interactive setup).
+    monkeypatch.setattr(features, "is_frozen", lambda: False)
+    monkeypatch.setattr(features, "available", lambda name: False)
+    feats: list = []
+    payloads: list = []
+    monkeypatch.setattr(onboarding, "_install_features", lambda names, yes: feats.append(list(names)) or True)
+    monkeypatch.setattr(onboarding, "_sync_payloads", lambda yes: payloads.append(True) or True)
+    assert onboarding.run_setup(_ns(yes=True)) == onboarding.EXIT_OK
+    assert set(feats[0]) == set(onboarding._FEATURE_FLAGS)
+    assert payloads == [True]
+
+
+def test_setup_interactive_yes_to_all_matches_all(monkeypatch):
+    monkeypatch.setattr(features, "is_frozen", lambda: False)
+    monkeypatch.setattr(features, "available", lambda name: False)
+    monkeypatch.setattr(onboarding.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(onboarding, "_ask_yes_no", lambda q, default_yes: True)  # "sim" para tudo
+    feats: list = []
+    payloads: list = []
+    monkeypatch.setattr(onboarding, "_install_features", lambda names, yes: feats.append(list(names)) or True)
+    monkeypatch.setattr(onboarding, "_sync_payloads", lambda yes: payloads.append(True) or True)
+    assert onboarding.run_setup(_ns()) == onboarding.EXIT_OK
+    assert set(feats[0]) == set(onboarding._FEATURE_FLAGS)
+    assert payloads == [True]
+
+
+def test_setup_non_tty_no_flags_is_noop_ok(monkeypatch):
+    monkeypatch.setattr(onboarding.sys.stdin, "isatty", lambda: False)
+    ran: list = []
+    monkeypatch.setattr(onboarding, "_run", lambda argv: ran.append(argv) or True)
+    assert onboarding.run_setup(_ns()) == onboarding.EXIT_OK
+    assert ran == []  # nothing installed without a TTY or --yes
+
+
 def test_self_update_cancel_runs_nothing(monkeypatch):
     monkeypatch.setattr(features, "is_frozen", lambda: False)
     monkeypatch.setattr(features, "install_method", lambda: "uv tool")

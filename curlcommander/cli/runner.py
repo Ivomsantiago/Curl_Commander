@@ -300,7 +300,7 @@ def _apply_api_style(config: RequestConfig, args) -> RequestConfig:
 
 
 def _run_introspection(config: RequestConfig) -> int:
-    _console.print(f"[dim]→ GraphQL introspection {config.url}[/dim]")
+    _console.print(f"[dim]-> GraphQL introspection {config.url}[/dim]")
     result = asyncio.run(send(config))
     if result.error:
         _console.print(f"[red bold]Error:[/red bold] {result.error}")
@@ -315,7 +315,7 @@ def _run_introspection(config: RequestConfig) -> int:
 
 
 def _run_stream(config: RequestConfig) -> int:
-    _console.print(f"[dim]→ streaming {config.method} {config.url}[/dim]")
+    _console.print(f"[dim]-> streaming {config.method} {config.url}[/dim]")
 
     def on_line(line: str) -> None:
         _console.print(line, highlight=False)
@@ -393,9 +393,10 @@ def _run_fuzz(config: RequestConfig, args) -> int:
             f"[{style}]{r.status_code or 'ERR'}[/{style}]",
             str(r.size_bytes),
             f"{r.duration_ms:.0f}",
-            "[bold yellow]★[/bold yellow]" if r.anomaly else "",
+            "[bold yellow]*[/bold yellow]" if r.anomaly else "",
         )
     _console.print(table)
+    _warn_stale_payloads()
     return EXIT_OK
 
 
@@ -408,7 +409,7 @@ def _run_payloads(args) -> int:
             names = [name] if name else list(payload_sources.load_sources())
             for n in names:
                 dest = payload_sources.sync(n)
-                _console.print(f"[green]synced[/green] {n} → {dest}")
+                _console.print(f"[green]synced[/green] {n} -> {dest}")
         except payload_sources.PayloadSourceError as exc:
             _console.print(f"[red]Error:[/red] {exc}")
             return EXIT_USAGE
@@ -487,7 +488,7 @@ def _print_fuzz_table(results, title: str) -> None:
             f"[{style}]{r.status_code or 'ERR'}[/{style}]",
             str(r.size_bytes),
             f"{r.duration_ms:.0f}",
-            "[bold yellow]★[/bold yellow]" if r.anomaly else "",
+            "[bold yellow]*[/bold yellow]" if r.anomaly else "",
         )
     _console.print(table)
 
@@ -523,6 +524,7 @@ def _run_discover(args) -> int:
         )
     )
     _print_fuzz_table(results, f"Discovery — {len(results)} hits")
+    _warn_stale_payloads()
     return EXIT_OK
 
 
@@ -568,7 +570,7 @@ def _run_validate(args) -> int:
     if result.payload:
         _console.print(f"[dim]payload:[/dim] {result.payload}")
     if shot and result.evidence.get("screenshot"):
-        _console.print(f"[green]screenshot →[/green] {shot}")
+        _console.print(f"[green]screenshot ->[/green] {shot}")
     return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
 
 
@@ -616,7 +618,7 @@ def _run_proxy(args, repo) -> int:
         _console.print(
             "[yellow]Installing a CA in your OS/browser is sensitive — it lets this proxy "
             "decrypt your TLS. Trust it only for testing, and REMOVE it afterwards.[/yellow]\n"
-            "  Firefox: Settings → Certificates → Import (Authorities)\n"
+            "  Firefox: Settings -> Certificates -> Import (Authorities)\n"
             "  Linux:   copy to /usr/local/share/ca-certificates/ and run update-ca-certificates\n"
             "  Remove:  delete the file above / remove it from the trust store"
         )
@@ -712,11 +714,25 @@ def _run_bounty_scan(args) -> int:
         for c in buckets.get(sev, []):
             colour = {"high": "red", "medium": "yellow", "low": "cyan"}[sev]
             _console.print(
-                f"[{colour}]{sev.upper()}[/{colour}] {c.category}: {c.payload!r} → {c.status_code} ({c.size_bytes} B)"
+                f"[{colour}]{sev.upper()}[/{colour}] {c.category}: {c.payload!r} -> {c.status_code} ({c.size_bytes} B)"
             )
     if total == 0:
         _console.print("[dim]No anomalies flagged. Candidates are leads to investigate, not confirmations.[/dim]")
+    _warn_stale_payloads()
     return EXIT_OK
+
+
+def _warn_stale_payloads() -> None:
+    """Non-blocking one-line PT-BR notice if a synced source is out of date (0.3)."""
+    try:
+        stale = payload_sources.stale_sources()
+    except Exception:
+        return
+    if stale:
+        _console.print(
+            f"[yellow]Aviso:[/yellow] as wordlists de [bold]{', '.join(stale)}[/bold] não são atualizadas "
+            f"há mais de {payload_sources.STALE_AFTER_DAYS} dias. Rode: [bold]curlcmd payloads update[/bold]"
+        )
 
 
 def _int_set(value: str | None) -> set[int] | None:
@@ -822,7 +838,7 @@ def _execute_request(
         _console.print("[yellow]warning: TLS verification disabled (--no-verify)[/yellow]")
 
     get_logger().info("request %s %s", config.method, config.url)
-    _console.print(f"[dim]→ {config.method} {config.url}[/dim]")
+    _console.print(f"[dim]-> {config.method} {config.url}[/dim]")
 
     if config.raw_path:
         # Byte-faithful request line via the raw socket transport (2B.1).
