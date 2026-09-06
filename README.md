@@ -1,129 +1,205 @@
 # CurlCommander
 
-A terminal HTTP request builder, `curl` generator, and API/AppSec testing tool.
-Build and replay requests, generate a faithful `curl`, import from DevTools or
-Burp, fuzz, assert, and drive raw byte-level requests — from one entrypoint,
-`curlcmd`.
+**🌐 Idioma:** **Português** · [English](README.en.md)
 
-Built for analysts and engineers who need requests reliable enough to paste into
-a pentest report, expressive enough to test any API style (REST, GraphQL,
-SOAP/XML, gRPC-web, legacy forms), and scriptable enough to run in CI.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/Ivomsantiago/Curl_Commander/actions/workflows/ci.yml/badge.svg)](https://github.com/Ivomsantiago/Curl_Commander/actions/workflows/ci.yml)
+[![Releases](https://img.shields.io/github/v/release/Ivomsantiago/Curl_Commander?display_name=tag&sort=semver)](https://github.com/Ivomsantiago/Curl_Commander/releases)
+
+Construtor de requisições HTTP no terminal, gerador de `curl` e ferramenta de
+testes de API/AppSec. Monte e repita requisições, gere um `curl` fiel, importe
+do DevTools ou do Burp, faça fuzzing, valide asserções e dispare requisições
+byte a byte — tudo por um único ponto de entrada: `curlcmd`.
+
+Feito para analistas e engenheiros que precisam de requisições confiáveis o
+bastante para colar num relatório de pentest, expressivas o bastante para testar
+qualquer estilo de API (REST, GraphQL, SOAP/XML, gRPC-web, formulários legados)
+e programáveis o bastante para rodar em CI.
 
 Python 3.11+ · `httpx` · `rich` · `prompt_toolkit` · `textual`.
 
+![Demonstração do CurlCommander](docs/demo.gif)
+
+> _O arquivo `docs/demo.gif` é um espaço reservado para a demonstração animada
+> da ferramenta. Substitua-o por uma gravação real do `curlcmd` em uso._
+
 ---
 
-## 1. Installation
-
-**Linux/macOS:** `bash install.sh`  ·  **Windows:** `powershell -ExecutionPolicy Bypass -File install.ps1`
-
-| Method | Command | OS | When to use |
-|--------|---------|----|-------------|
-| **Standalone binary** | download `curlcmd`/`curlcmd.exe` from Releases | Win/Lin/mac | **Recommended** if you just want to run it — no Python needed |
-| `curlcmd.pyz` | download the `.pyz`, `python curlcmd.pyz` | any | Have Python, want one file, no install |
-| pipx | `pipx install curlcommander` | any | Isolated user install, on PATH |
-| uv | `uv tool install curlcommander` | any | Same, faster |
-| pip (dev) | `pip install -e ".[dev]"` | any | Developing/contributing |
+## Instalação em uma linha
 
 ```bash
-bash install.sh            # uv tool / pipx, or a local .venv
+# Linux/macOS
+curl -fsSL https://raw.githubusercontent.com/Ivomsantiago/Curl_Commander/main/scripts/install.sh | sh
 ```
 
-The installer prefers isolated installs (`uv tool install`, then `pipx`), falls
-back to a local `.venv`, and only touches the system Python with
-`--break-system-packages` if you pass `--system` and confirm.
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/Ivomsantiago/Curl_Commander/main/scripts/install.ps1 | iex
+```
 
-Optional extras: `pip install "curlcommander[socks]"` (SOCKS proxy),
-`"[clipboard]"` (pyperclip), `"[browser]"` (Playwright validators — then
-`playwright install chromium`), `"[proxy]"` (mitmproxy intercepting proxy).
-Run `curlcmd --version` to verify.
+O instalador escolhe o melhor método disponível — `uv tool` → `pipx` → um venv
+gerenciado com um atalho `curlcmd` — resolve o seu PATH, é idempotente e aceita
+`--yes`/`-Yes` para uso em scripts/CI. Depois, rode `curlcmd setup` e
+`curlcmd doctor`.
 
-### Standalone binary (no Python required)
+---
 
-Download `curlcmd` / `curlcmd.exe` for your OS from the
-[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases) page, verify
-the checksum against `SHA256SUMS`, and run it directly:
+## Sumário
+
+1. [Instalação](#1-instalação)
+2. [Primeiros passos: `setup` e `doctor`](#2-primeiros-passos-setup-e-doctor)
+3. [Segurança](#3-segurança)
+4. [CLI](#4-cli)
+5. [Interface no terminal (TUI)](#5-interface-no-terminal-tui)
+6. [Armazenamento do histórico](#6-armazenamento-do-histórico)
+7. [Bug bounty — payloads → fuzz → discover](#7-bug-bounty--payloads--fuzz--discover)
+8. [Validação por navegador e proxy interceptador](#8-validação-por-navegador-e-proxy-interceptador)
+9. [Desenvolvimento](#9-desenvolvimento)
+10. [Roadmap](#10-roadmap)
+
+Novo por aqui? Comece pelo guia rápido em [`docs/COMECE-AQUI.md`](docs/COMECE-AQUI.md).
+
+---
+
+## 1. Instalação
+
+A forma recomendada é o instalador de uma linha (acima). Ele prioriza instalações
+isoladas (`uv tool`, depois `pipx`), cai para um venv gerenciado com um atalho
+`curlcmd` no PATH e nunca mexe no Python do sistema em silêncio.
+
+<details>
+<summary>Outros métodos de instalação</summary>
+
+| Método | Comando | SO | Quando usar |
+|--------|---------|----|-------------|
+| **Binário standalone** | baixe `curlcmd`/`curlcmd.exe` em Releases | Win/Lin/mac | **Recomendado** se você só quer rodar — não precisa de Python |
+| winget | `winget install Ivomsantiago.CurlCommander` | Windows | Gerenciador de pacotes do Windows |
+| Scoop | `scoop install curlcommander` | Windows | Bucket do Scoop |
+| `curlcmd.pyz` | baixe o `.pyz`, `python curlcmd.pyz` | qualquer | Tem Python, quer um arquivo só, sem instalar |
+| pipx | `pipx install curlcommander` | qualquer | Instalação isolada por usuário, no PATH |
+| uv | `uv tool install curlcommander` | qualquer | Igual, porém mais rápido |
+| pip (dev) | `pip install -e ".[dev]"` | qualquer | Desenvolvendo/contribuindo |
+
+Os scripts `install.sh` / `install.ps1` na raiz (rodados a partir de um checkout)
+também preferem instalações isoladas e só tocam o Python do sistema com
+`--break-system-packages`/`-System` após confirmação.
+
+</details>
+
+### Binário standalone (sem Python)
+
+Baixe `curlcmd` / `curlcmd.exe` para o seu SO na página de
+[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases), confira o
+checksum contra o `SHA256SUMS` e rode direto:
 
 ```bash
 chmod +x curlcmd && ./curlcmd --version          # Linux/macOS
 .\curlcmd.exe --version                           # Windows (PowerShell)
 ```
 
-Build it yourself with `pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
-(output in `dist/`). A single-file `curlcmd.pyz` (needs Python, no install) is
-also available via `pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
+Para gerar você mesmo: `pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
+(saída em `dist/`). Há também um `curlcmd.pyz` de arquivo único (precisa de
+Python, sem instalar): `pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
 
-> **Antivirus note.** PyInstaller binaries occasionally trigger a false positive
-> on Windows Defender/SmartScreen. Verify the published SHA256, or install via
-> `pipx`/`pip` instead if your environment blocks unsigned binaries.
-
----
-
-## 2. Security
-
-This is the most important section — the history database stores request
-metadata, and without care that becomes a dump of client credentials.
-
-**What is redacted (default).** Before anything is written to the history DB,
-the JSON export, evidence files, or logs, secrets are removed:
-
-- Bearer/Basic/API-key auth values, `Authorization`/`Proxy-Authorization`,
-  `Cookie`/`Set-Cookie`, `X-API-Key` and similar headers, and proxy credentials.
-- Secrets that came from `--env-file` are stored as **resolvable references**
-  (`{{VAR}}`), so they can be replayed later; everything else secret is replaced
-  with `«REDACTED»` and is genuinely discarded.
-- The stored `curl` is regenerated from the redacted request, so it never leaks.
-
-**What is not redacted.** Method, URL path, hostnames, non-sensitive headers,
-query params and bodies are stored as-is (a secret embedded directly in a URL
-query or body is your responsibility). `--no-redact` disables redaction entirely
-and prints a warning.
-
-**Revealing.** `curlcmd history --reveal`, `curlcmd curl <id> --reveal` and
-`export-history --reveal` resolve `{{VAR}}` references from the current
-environment. `«REDACTED»` values are unrecoverable by design.
-
-**Storage location.** History lives in the OS data dir — `%LOCALAPPDATA%\CurlCommander`
-(Windows), `~/Library/Application Support/CurlCommander` (macOS),
-`~/.local/share/curlcommander` (Linux, respects `XDG_DATA_HOME`). Set
-`CURLCOMMANDER_HOME` to override it (portable/CI use). A legacy
-`~/.curlcommander` from earlier versions is migrated automatically on first run.
-
-**File permissions.** The app dir is created `0700` and `history.db` `0600`
-(session cookie jars `0600`) on POSIX. **On Windows** `chmod` only toggles the
-read-only bit — it does not restrict other local users — so on Windows the real
-protection for the history is **secret redaction** (enabled by default); do not
-disable it with `--no-redact` on a shared machine.
-
-**Operational safety for pentests.** `--scope scope.txt` refuses any target not
-in the allowlist. `--dry-run` shows the exact bytes without sending.
-`--no-verify` always prints a visible warning. `--evidence DIR --engagement
-LABEL` saves raw request + response + metadata for the report.
+> **Nota sobre antivírus.** Binários do PyInstaller às vezes disparam um falso
+> positivo no Windows Defender/SmartScreen. Confira o SHA256 publicado, ou
+> instale via `pipx`/`pip` se o seu ambiente bloqueia binários não assinados.
+>
+> **Recursos que dependem de Python.** O binário standalone **não** inclui
+> Chromium/mitmproxy/payloads: validadores em navegador, proxy interceptador e
+> download de wordlists exigem uma instalação via Python. Rode `curlcmd doctor`
+> para o diagnóstico.
 
 ---
 
-## 3. CLI
+## 2. Primeiros passos: `setup` e `doctor`
+
+Depois de instalar, use o `setup` para habilitar recursos opcionais e o `doctor`
+para diagnosticar tudo. Ambos são idempotentes, falam português e nunca baixam
+nada em silêncio — mostram o plano e pedem confirmação (ou `--yes` em scripts).
 
 ```bash
-curlcmd https://httpbin.org/get                         # simple GET
-curlcmd -X POST --json '{"name":"ada"}' https://api/x   # POST JSON
-curlcmd --auth-bearer $TOKEN -H "Accept: application/json" https://api/me
-curlcmd -H "X-Forwarded-For: 1.1.1.1" -H "X-Forwarded-For: 2.2.2.2" https://x  # dup headers
-curlcmd -p "id=1" -p "id=2" https://x                   # HPP (duplicate params)
-curlcmd -X POST -F "file=@shell.php;type=image/png" https://x/upload
-curlcmd --curl-only -X POST --json '{"id":1}' https://api/x   # print curl only
+curlcmd setup            # confere a base e mostra os recursos opcionais
+curlcmd setup --all      # instala todos os recursos opcionais e as fontes de payloads
+curlcmd setup --browser  # só os validadores em navegador (Playwright + Chromium)
+curlcmd setup --proxy    # só o proxy interceptador (mitmproxy)
+curlcmd doctor           # diagnostica a instalação; com --fix instala o que faltar
 ```
 
-### AppSec flow: DevTools → import → edit → resend → assert
+`curlcmd --version` mostra a versão **e** como o curlcmd foi instalado.
+`curlcmd self-update` atualiza pelo método detectado (pipx/uv/pip). Extras também
+podem ser instalados à mão: `pip install "curlcommander[browser]"` +
+`playwright install chromium`, `"[proxy]"`, `"[socks]"`, `"[clipboard]"`.
+
+---
+
+## 3. Segurança
+
+Esta é a seção mais importante — o banco de histórico guarda metadados das
+requisições e, sem cuidado, isso vira um despejo de credenciais de clientes.
+
+**O que é redigido (padrão).** Antes de qualquer coisa ser escrita no histórico,
+no export JSON, nos arquivos de evidência ou nos logs, os segredos são removidos:
+
+- Valores de auth Bearer/Basic/API-key, `Authorization`/`Proxy-Authorization`,
+  `Cookie`/`Set-Cookie`, `X-API-Key` e cabeçalhos afins, e credenciais de proxy.
+- Segredos vindos de `--env-file` são guardados como **referências resolvíveis**
+  (`{{VAR}}`), para poderem ser repetidos depois; o resto do que é secreto vira
+  `«REDACTED»` e é de fato descartado.
+- O `curl` armazenado é regenerado a partir da requisição já redigida, então
+  nunca vaza.
+
+**O que não é redigido.** Método, caminho da URL, hostnames, cabeçalhos não
+sensíveis, parâmetros de query e corpos são guardados como estão (um segredo
+embutido direto numa query ou corpo é responsabilidade sua). `--no-redact`
+desliga a redação por completo e imprime um aviso.
+
+**Revelar.** `curlcmd history --reveal`, `curlcmd curl <id> --reveal` e
+`export-history --reveal` resolvem as referências `{{VAR}}` do ambiente atual.
+Valores `«REDACTED»` são irrecuperáveis por design.
+
+**Local de armazenamento.** O histórico fica no diretório de dados do SO —
+`%LOCALAPPDATA%\CurlCommander` (Windows), `~/Library/Application Support/CurlCommander`
+(macOS), `~/.local/share/curlcommander` (Linux, respeita `XDG_DATA_HOME`). Defina
+`CURLCOMMANDER_HOME` para sobrescrever (uso portátil/CI). Um `~/.curlcommander`
+legado de versões antigas é migrado automaticamente na primeira execução.
+
+**Permissões de arquivo.** O diretório é criado com `0700` e o `history.db` com
+`0600` (cookie jars de sessão `0600`) em sistemas POSIX. **No Windows** o `chmod`
+só alterna o bit somente-leitura — não restringe outros usuários locais — então
+no Windows a proteção real do histórico é a **redação de segredos** (ligada por
+padrão); não a desligue com `--no-redact` numa máquina compartilhada.
+
+**Segurança operacional para pentests.** `--scope scope.txt` recusa qualquer
+alvo fora da allowlist. `--dry-run` mostra os bytes exatos sem enviar.
+`--no-verify` sempre imprime um aviso visível. `--evidence DIR --engagement
+LABEL` salva requisição + resposta cruas + metadados para o relatório.
+
+---
+
+## 4. CLI
 
 ```bash
-# 1. Copy as cURL from DevTools/Burp, import and resend through Burp:
+curlcmd https://httpbin.org/get                         # GET simples
+curlcmd -X POST --json '{"name":"ada"}' https://api/x   # POST JSON
+curlcmd --auth-bearer $TOKEN -H "Accept: application/json" https://api/me
+curlcmd -H "X-Forwarded-For: 1.1.1.1" -H "X-Forwarded-For: 2.2.2.2" https://x  # cabeçalhos duplicados
+curlcmd -p "id=1" -p "id=2" https://x                   # HPP (parâmetros duplicados)
+curlcmd -X POST -F "file=@shell.php;type=image/png" https://x/upload
+curlcmd --curl-only -X POST --json '{"id":1}' https://api/x   # só imprime o curl
+```
+
+### Fluxo AppSec: DevTools → importar → editar → reenviar → validar
+
+```bash
+# 1. "Copy as cURL" no DevTools/Burp, importar e reenviar pelo Burp:
 curlcmd --import 'curl "https://api.x/me" -H "Cookie: s=abc" --data-raw "{}"' --burp
 
-# 2. Import a raw Burp Repeater block, retargeted at another host:
+# 2. Importar um bloco cru do Burp Repeater, redirecionado a outro host:
 curlcmd --import-raw request.txt --host https://staging.target
 
-# 3. Validate a fix in CI (exit 3 on failure, junit for the pipeline):
+# 3. Validar uma correção em CI (código 3 na falha, junit para o pipeline):
 curlcmd --assert-status 200 --assert-header "X-Frame-Options: DENY" \
         --assert-jsonpath '$.user.id==42' --assert-max-ms 500 \
         --report junit https://api.x/me
@@ -135,145 +211,155 @@ curlcmd --assert-status 200 --assert-header "X-Frame-Options: DENY" \
 curlcmd -w words.txt "https://x/FUZZ" --mc 200,301 --fs 0 --concurrency 20 --rate 10
 curlcmd --payloads sqli "https://x/item?id=FUZZ" --mr "SQL syntax"
 curlcmd -w users.txt -w pass.txt --fuzz-mode pitchfork "https://x/FUZZ1:FUZZ2"
-curlcmd --payloads traversal --encode url,url "https://x/file?p=FUZZ"   # double-url
+curlcmd --payloads traversal --encode url,url "https://x/file?p=FUZZ"   # url dupla
 ```
 
-### Raw / pentest control
+### Controle cru / pentest
 
 ```bash
-curlcmd --raw-path "https://x/a/../../etc/passwd"        # path sent byte-faithful
+curlcmd --raw-path "https://x/a/../../etc/passwd"        # caminho enviado byte a byte
 curlcmd --no-default-headers -H "Host: internal" https://x
-curlcmd --raw-request smuggle.txt --host https://target  # CL.TE/TE.CL, byte-for-byte
+curlcmd --raw-request smuggle.txt --host https://target  # CL.TE/TE.CL, byte a byte
 curlcmd --scope scope.txt --evidence out/ --engagement ENG-2026-07 https://x/y
 ```
 
-### API styles
+### Estilos de API
 
 ```bash
 curlcmd --graphql '{ me { id } }' https://x/graphql
-curlcmd --graphql-introspection https://x/graphql        # report if enabled
+curlcmd --graphql-introspection https://x/graphql        # reporta se habilitado
 curlcmd --soap @envelope.xml --soap-action "urn:Login" https://x/svc
 curlcmd --stream https://x/events                        # NDJSON / SSE
 ```
 
-### History
+### Histórico
 
 ```bash
-curlcmd history [--reveal]        # list (redacted by default)
-curlcmd replay <id>              # re-send (resolves {{VAR}} from env)
-curlcmd curl <id> [--reveal]     # print the stored curl
+curlcmd history [--reveal]        # listar (redigido por padrão)
+curlcmd replay <id>              # reenviar (resolve {{VAR}} do ambiente)
+curlcmd curl <id> [--reveal]     # imprimir o curl armazenado
 curlcmd export-history -o h.json [--reveal]
 curlcmd delete-history <id>
 curlcmd clear-history
 ```
 
+### Manutenção da instalação
+
+```bash
+curlcmd setup [--all|--browser|--proxy|--socks|--clipboard] [--payloads] [--yes]
+curlcmd doctor [--fix]
+curlcmd self-update [--yes]
+```
+
 ### Flags
 
-| Flag | Description |
-|------|-------------|
-| `-X, --method` | HTTP method (any token; not validated) |
-| `-H, --header` | Header `Key: Value` (repeatable, duplicates preserved) |
-| `-p, --param` | Query param `key=value` (repeatable, HPP-capable) |
-| `-b, --body` / `--body-file` | Raw body / body from file |
-| `--json` / `--form` | JSON / form-urlencoded body |
-| `--auth-bearer` / `--auth-basic` / `--auth-apikey` | Auth |
-| `--cookie` / `--cookie-jar` / `--session` | Cookies and named sessions |
-| `-F, --form-file` | Multipart field/file `name=@path[;type=;filename=]` |
-| `--proxy` | Proxy URL (`http://127.0.0.1:8080`) |
-| `--retry` / `--retry-delay` / `--compressed` / `--http2` | Transport |
-| `--output` | Save raw response bytes to a file |
-| `--raw` / `--pretty` | Disable / force display formatting |
-| `--env-file` | Load `{{VAR}}` substitutions from a file |
-| `--no-redirect` / `--no-verify` / `--timeout` | Request options |
-| `--fail` | Exit 22 on HTTP ≥ 400 |
-| `--no-redact` / `--reveal` | Secret redaction controls |
-| `--import` / `--import-file` / `--import-clipboard` | Import curl |
-| `--import-raw` / `--host` | Import a raw HTTP block |
-| `--assert-status/-header/-body-contains/-jsonpath/-max-ms` | Assertions |
-| `--report json\|junit` | Assertion report |
-| `-w, --wordlist` / `--payloads` | Fuzz wordlist / built-in payloads |
-| `--fuzz-mode` / `--encode` / `--concurrency` / `--rate` | Fuzz control |
-| `--mc/--fc/--ms/--fs/--mr` | Fuzz match/filter (code/size/regex) |
-| `--raw-path` / `--raw-request` / `--no-default-headers` | Raw control |
-| `--graphql[-vars/-introspection]` / `--xml` / `--soap[-action/-envelope]` | API styles |
+| Flag | Descrição |
+|------|-----------|
+| `-X, --method` | Método HTTP (qualquer token; não validado) |
+| `-H, --header` | Cabeçalho `Chave: Valor` (repetível, duplicatas preservadas) |
+| `-p, --param` | Parâmetro de query `chave=valor` (repetível, capaz de HPP) |
+| `-b, --body` / `--body-file` | Corpo cru / corpo a partir de arquivo |
+| `--json` / `--form` | Corpo JSON / form-urlencoded |
+| `--auth-bearer` / `--auth-basic` / `--auth-apikey` | Autenticação |
+| `--cookie` / `--cookie-jar` / `--session` | Cookies e sessões nomeadas |
+| `-F, --form-file` | Campo/arquivo multipart `nome=@caminho[;type=;filename=]` |
+| `--proxy` | URL de proxy (`http://127.0.0.1:8080`) |
+| `--retry` / `--retry-delay` / `--compressed` / `--http2` | Transporte |
+| `--output` | Salva os bytes crus da resposta num arquivo |
+| `--raw` / `--pretty` | Desliga / força a formatação de exibição |
+| `--env-file` | Carrega substituições `{{VAR}}` de um arquivo |
+| `--no-redirect` / `--no-verify` / `--timeout` | Opções da requisição |
+| `--fail` | Sai com 22 em HTTP ≥ 400 |
+| `--no-redact` / `--reveal` | Controles de redação de segredos |
+| `--import` / `--import-file` / `--import-clipboard` | Importar curl |
+| `--import-raw` / `--host` | Importar um bloco HTTP cru |
+| `--assert-status/-header/-body-contains/-jsonpath/-max-ms` | Asserções |
+| `--report json\|junit` | Relatório de asserções |
+| `-w, --wordlist` / `--payloads` | Wordlist de fuzz / payloads embutidos |
+| `--fuzz-mode` / `--encode` / `--concurrency` / `--rate` | Controle de fuzz |
+| `--mc/--fc/--ms/--fs/--mr` | Match/filtro de fuzz (código/tamanho/regex) |
+| `--raw-path` / `--raw-request` / `--no-default-headers` | Controle cru |
+| `--graphql[-vars/-introspection]` / `--xml` / `--soap[-action/-envelope]` | Estilos de API |
 | `--grpc-web` / `--stream` | gRPC-web / streaming |
-| `--scope` / `--dry-run` / `--evidence` / `--engagement` | Operational safety |
-| `--log-file` / `--log-level` | Redacted logging |
-| `--curl-only` / `--save` / `--gui` / `--version` | Misc |
+| `--scope` / `--dry-run` / `--evidence` / `--engagement` | Segurança operacional |
+| `--log-file` / `--log-level` | Logging redigido |
+| `--curl-only` / `--save` / `--gui` / `--version` | Diversos |
 
-Exit codes: `0` ok · `1` usage/parse · `2` network/DNS/TLS/timeout ·
-`3` assertion failed · `22` HTTP ≥ 400 with `--fail`.
+Códigos de saída: `0` ok · `1` uso/parse · `2` rede/DNS/TLS/timeout ·
+`3` asserção falhou · `22` HTTP ≥ 400 com `--fail`.
 
 ---
 
-## 4. GUI (TUI)
+## 5. Interface no terminal (TUI)
 
 ```bash
 curlcmd --gui
 ```
 
-Request panel (method/URL/headers/params/body/auth **and** options: proxy,
-timeout, retries, verify, redirects), a live-updating generated-curl panel, a
-tabbed response (Body / Headers / Raw / Cookies) with body search and save, and
-a history table (replay / show-curl / delete).
+Painel de requisição (método/URL/cabeçalhos/parâmetros/corpo/auth **e** opções:
+proxy, timeout, retentativas, verificação, redirects), um painel de curl gerado
+que atualiza ao vivo, uma resposta em abas (Body / Headers / Raw / Cookies) com
+busca no corpo e salvamento, e uma tabela de histórico (repetir / mostrar-curl /
+apagar).
 
-| Key | Action |
-|-----|--------|
-| `Ctrl+S` | Send (portable; `Ctrl+Enter` also works where the terminal supports it) |
-| `Ctrl+Y` | Copy generated curl to clipboard |
-| `Ctrl+X` | Cancel in-flight request |
-| `Ctrl+L` | Clear form · `Ctrl+H` History · `Ctrl+Q` Quit |
+| Tecla | Ação |
+|-------|------|
+| `Ctrl+S` | Enviar (portátil; `Ctrl+Enter` também funciona onde o terminal suporta) |
+| `Ctrl+Y` | Copiar o curl gerado para a área de transferência |
+| `Ctrl+X` | Cancelar a requisição em andamento |
+| `Ctrl+L` | Limpar formulário · `Ctrl+H` Histórico · `Ctrl+Q` Sair |
 
-`{{VAR}}` references in the form are resolved from the environment on send.
-
----
-
-## 5. History storage
-
-Requests are stored in the OS data dir (see Storage location above) as
-`history.db` (SQLite, `0600` on POSIX). The full
-request is kept as a redacted `config_json` snapshot so replay is lossless;
-schema upgrades run automatically via `PRAGMA user_version`.
+Referências `{{VAR}}` no formulário são resolvidas do ambiente ao enviar.
 
 ---
 
-## 6. Bug bounty — payloads → fuzz → discover
+## 6. Armazenamento do histórico
 
-Payload sources (SecLists, PayloadsAllTheThings, FuzzDB) are synced on demand,
-not vendored. Point at an existing checkout with `SECLISTS_PATH` /
-`CURLCOMMANDER_PAYLOADS` instead of syncing.
+As requisições são guardadas no diretório de dados do SO (veja "Local de
+armazenamento" acima) como `history.db` (SQLite, `0600` em POSIX). A requisição
+completa é mantida como um snapshot `config_json` redigido, então a repetição é
+sem perdas; upgrades de esquema rodam automaticamente via `PRAGMA user_version`.
+
+---
+
+## 7. Bug bounty — payloads → fuzz → discover
+
+As fontes de payloads (SecLists, PayloadsAllTheThings, FuzzDB) são sincronizadas
+sob demanda, não embutidas. Aponte para um checkout existente com `SECLISTS_PATH`
+/ `CURLCOMMANDER_PAYLOADS` em vez de sincronizar.
 
 ```bash
-curlcmd payloads sync seclists          # shallow, sparse clone into the data dir
-curlcmd payloads list                    # categories + synced sources
-curlcmd payloads search common           # find wordlist files
-curlcmd payloads show xss --count        # size a fuzz run
+curlcmd payloads sync seclists          # clone raso e esparso no diretório de dados
+curlcmd payloads list                    # categorias + fontes sincronizadas
+curlcmd payloads search common           # encontra arquivos de wordlist
+curlcmd payloads show xss --count        # dimensiona uma rodada de fuzz
 
-# Resolve by intent or by source path — one fuzz engine, existing filters:
+# Resolva por intenção ou por caminho de origem — um só motor de fuzz, os mesmos filtros:
 curlcmd --payloads xss "https://t/s?q=FUZZ" --mr "alert\("
 curlcmd -w seclists:Discovery/Web-Content/common.txt "https://t/FUZZ" --fc 404
-curlcmd --payloads-all sqli --encode url "https://t/i?id=FUZZ"   # all sources, deduped
+curlcmd --payloads-all sqli --encode url "https://t/i?id=FUZZ"   # todas as fontes, deduplicado
 
-# Content discovery (dirbusting) and a chained profile:
+# Descoberta de conteúdo (dirbusting) e um perfil encadeado:
 curlcmd discover https://t -w seclists:Discovery/Web-Content/raft-medium-directories.txt -e php,bak --recurse 1
 curlcmd bounty-scan https://t/page --engagement ENG-2026 --categories xss,sqli,traversal
 ```
 
-`bounty-scan` consolidates anomalies into severity-ranked **candidates to
-investigate** — never confirmations. Confirm them in a browser (below).
+O `bounty-scan` consolida anomalias em **candidatos a investigar** ordenados por
+severidade — nunca confirmações. Confirme-os num navegador (abaixo).
 
-## 7. Browser validation & intercepting proxy
+## 8. Validação por navegador e proxy interceptador
 
-Heavy deps are optional extras that degrade with a clear message:
+Dependências pesadas são extras opcionais que degradam com uma mensagem clara
+(instale com `curlcmd setup --browser` / `--proxy`):
 
 ```bash
-pip install "curlcommander[browser]" && playwright install chromium   # validators
+pip install "curlcommander[browser]" && playwright install chromium   # validadores
 pip install "curlcommander[proxy]"                                     # proxy
 ```
 
-**Validate** moves a reflected candidate to CONFIRMED by executing it in a real
-browser (unique per-test canary → no false positives). Every navigation is
-scope-checked and requires `--engagement`.
+O **validate** move um candidato refletido para CONFIRMADO executando-o num
+navegador real (canário único por teste → sem falsos positivos). Toda navegação
+é checada contra o escopo e exige `--engagement`.
 
 ```bash
 curlcmd validate xss "https://t/s?q=§PAYLOAD§" --engagement ENG --evidence out/
@@ -282,40 +368,41 @@ curlcmd validate cors https://api.t/data --origin https://evil.example --engagem
 curlcmd validate open-redirect "https://t/r?next=§DEST§" --engagement ENG
 ```
 
-`--evidence DIR` saves a screenshot, the DOM, a HAR and a Playwright trace.
+`--evidence DIR` salva um screenshot, o DOM, um HAR e um trace do Playwright.
 
-**Proxy** — an intercepting HTTPS proxy with its own CA, match-and-replace, and
-scope-gated capture into history:
+O **proxy** — um proxy HTTPS interceptador com CA própria, match-and-replace e
+captura no histórico limitada ao escopo:
 
 ```bash
-curlcmd proxy --ca                       # print the CA path + install/removal guidance
+curlcmd proxy --ca                       # imprime o caminho da CA + guia de instalação/remoção
 curlcmd proxy --port 8080 --scope scope.txt --engagement ENG \
         --replace 'resp:secret==>«X»' --launch-browser
 ```
 
-> **CA warning.** Installing the proxy CA in your OS/browser lets it decrypt
-> your TLS — trust it only for testing and **remove it afterwards**. Only
-> in-scope hosts are intercepted; everything else is tunnelled without
-> inspection. The standalone binary does **not** bundle Chromium/mitmproxy —
-> install the extras separately for browser/proxy mode.
+> **Aviso da CA.** Instalar a CA do proxy no seu SO/navegador deixa ela
+> descriptografar o seu TLS — confie nela só para testes e **remova depois**. Só
+> hosts em escopo são interceptados; o resto é tunelado sem inspeção. O binário
+> standalone **não** inclui Chromium/mitmproxy — instale os extras à parte para
+> o modo navegador/proxy.
 
 ---
 
-## 8. Development
+## 9. Desenvolvimento
 
 ```bash
 uv pip install -e ".[dev]"
 ruff check . && ruff format --check . && mypy && pytest --cov=curlcommander
 ```
 
-`core/` never imports from `cli/` or `gui/`. See `CONTRIBUTING.md`.
+O `core/` nunca importa de `cli/` ou `gui/`. Veja o [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
-## 9. Roadmap
+## 10. Roadmap
 
-- Response diffing between history entries (`diff`), stored response bodies.
-- Detailed timing (DNS/connect/TLS/TTFB) and redirect-chain view.
-- Assisted vuln testing (reflection heuristics, OAST), auth-bypass/IDOR matrices.
+- Diffing de respostas entre entradas do histórico (`diff`), corpos armazenados.
+- Timing detalhado (DNS/connect/TLS/TTFB) e visão da cadeia de redirects.
+- Testes de vuln assistidos (heurísticas de reflexão, OAST), matrizes de
+  bypass de auth/IDOR.
 - mTLS (`--cert/--key/--cacert`), `--resolve`, `--unix-socket`, pinning.
-- Postman/collection export, request collections and environments.
+- Export para Postman/coleções, coleções de requisições e ambientes.

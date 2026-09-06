@@ -12,46 +12,46 @@ _console = Console(stderr=True)
 
 def run_wizard() -> RequestConfig | None:
     """Interactively build a RequestConfig using prompt_toolkit."""
-    _console.print("[bold cyan]CurlCommander — Interactive Wizard[/bold cyan]")
-    _console.print("[dim]Press Ctrl+C to cancel[/dim]\n")
+    _console.print("[bold cyan]CurlCommander — Assistente interativo[/bold cyan]")
+    _console.print("[dim]Pressione Ctrl+C para cancelar[/dim]\n")
 
     try:
         method = (
-            prompt("Method [GET]: ", completer=WordCompleter(HTTP_METHODS, ignore_case=True)).strip().upper() or "GET"
+            prompt("Método [GET]: ", completer=WordCompleter(HTTP_METHODS, ignore_case=True)).strip().upper() or "GET"
         )
 
         url = prompt("URL: ").strip()
         if not url:
-            _console.print("[red]URL is required.[/red]")
+            _console.print("[red]A URL é obrigatória.[/red]")
             return None
 
-        _console.print("\n[dim]Headers — format 'Key: Value', blank line to finish[/dim]")
+        _console.print("\n[dim]Cabeçalhos — formato 'Chave: Valor', linha em branco para terminar[/dim]")
         headers = HeaderList()
         while True:
-            line = prompt("  Header: ").strip()
+            line = prompt("  Cabeçalho: ").strip()
             if not line:
                 break
             try:
                 k, v = parse_header(line)
                 headers.append(k, v)
             except ParseError:
-                _console.print("[yellow]  Use format 'Key: Value'[/yellow]")
+                _console.print("[yellow]  Use o formato 'Chave: Valor'[/yellow]")
 
-        _console.print("\n[dim]Query params — format 'key=value', blank line to finish[/dim]")
+        _console.print("\n[dim]Parâmetros de query — formato 'chave=valor', linha em branco para terminar[/dim]")
         params = HeaderList()
         while True:
-            line = prompt("  Param: ").strip()
+            line = prompt("  Parâmetro: ").strip()
             if not line:
                 break
             try:
                 k, v = parse_param(line)
                 params.append(k, v)
             except ParseError:
-                _console.print("[yellow]  Use format 'key=value'[/yellow]")
+                _console.print("[yellow]  Use o formato 'chave=valor'[/yellow]")
 
         body_type = (
             prompt(
-                "\nBody type (none/json/form/raw) [none]: ",
+                "\nTipo de corpo (none/json/form/raw) [none]: ",
                 completer=WordCompleter(BODY_TYPES),
             ).strip()
             or "none"
@@ -59,11 +59,11 @@ def run_wizard() -> RequestConfig | None:
 
         body = ""
         if body_type != "none":
-            body = prompt(f"Body ({body_type}): ").strip()
+            body = prompt(f"Corpo ({body_type}): ").strip()
 
         auth_type = (
             prompt(
-                "\nAuth type (none/bearer/basic/apikey) [none]: ",
+                "\nTipo de auth (none/bearer/basic/apikey) [none]: ",
                 completer=WordCompleter(AUTH_TYPES),
             ).strip()
             or "none"
@@ -72,20 +72,20 @@ def run_wizard() -> RequestConfig | None:
         auth_value = ""
         if auth_type != "none":
             prompts = {
-                "bearer": "Bearer token: ",
-                "basic": "user:password: ",
-                "apikey": "'Header: Value': ",
+                "bearer": "Token Bearer: ",
+                "basic": "usuário:senha: ",
+                "apikey": "'Cabeçalho: Valor': ",
             }
-            auth_value = prompt(prompts.get(auth_type, "Auth value: ")).strip()
+            auth_value = prompt(prompts.get(auth_type, "Valor de auth: ")).strip()
 
-        _console.print("\n[dim]Options[/dim]")
-        no_redirect_s = prompt("Disable redirects? [y/N]: ").strip().lower()
-        follow_redirects = no_redirect_s not in ("y", "yes")
+        _console.print("\n[dim]Opções[/dim]")
+        no_redirect_s = prompt("Desativar redirects? [s/N]: ").strip().lower()
+        follow_redirects = no_redirect_s not in ("s", "sim", "y", "yes")
 
-        no_verify_s = prompt("Disable SSL verification? [y/N]: ").strip().lower()
-        verify_ssl = no_verify_s not in ("y", "yes")
+        no_verify_s = prompt("Desativar verificação SSL? [s/N]: ").strip().lower()
+        verify_ssl = no_verify_s not in ("s", "sim", "y", "yes")
 
-        timeout_s = prompt("Timeout seconds [30]: ").strip()
+        timeout_s = prompt("Timeout em segundos [30]: ").strip()
         timeout = float(timeout_s) if timeout_s else 30.0
 
         return RequestConfig(
