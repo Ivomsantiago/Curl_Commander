@@ -8,6 +8,13 @@ def _version() -> str:
     return __version__
 
 
+def _version_line() -> str:
+    """Version plus how curlcmd was installed (PT-BR), for ``--version``."""
+    from curlcommander.core import features
+
+    return f"curlcmd {_version()} (instalação: {features.install_method()})"
+
+
 class ArgParser(argparse.ArgumentParser):
     """ArgumentParser that exits with code 1 (usage error) instead of 2."""
 
@@ -177,7 +184,7 @@ def build_request_parser() -> argparse.ArgumentParser:
     parser.add_argument("--gui", action="store_true", help="Launch the Textual TUI")
     parser.add_argument("--log-file", metavar="PATH", help="Write redacted structured logs to PATH")
     parser.add_argument("--log-level", choices=["debug", "info", "warning", "error"], help="Log verbosity")
-    parser.add_argument("--version", action="version", version=f"curlcmd {_version()}")
+    parser.add_argument("--version", action="version", version=_version_line())
     return parser
 
 
@@ -207,6 +214,25 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     delete_p.add_argument("id", type=int, help="History entry ID")
 
     subparsers.add_parser("clear-history", help="Clear all history")
+
+    # setup (install optional extras + payloads; PT-BR, idempotent)
+    setup_p = subparsers.add_parser("setup", help="Instalar recursos opcionais (navegador/proxy/socks/payloads)")
+    setup_p.add_argument("--all", action="store_true", help="Instalar todos os recursos opcionais e payloads")
+    setup_p.add_argument("--browser", action="store_true", help="Validadores em navegador (Playwright)")
+    setup_p.add_argument("--proxy", action="store_true", help="Proxy interceptador (mitmproxy)")
+    setup_p.add_argument("--socks", action="store_true", help="Suporte a proxy SOCKS")
+    setup_p.add_argument("--clipboard", action="store_true", help="Área de transferência (pyperclip)")
+    setup_p.add_argument("--payloads", action="store_true", help="Baixar/atualizar as fontes de payloads")
+    setup_p.add_argument("-y", "--yes", action="store_true", help="Não perguntar; assumir sim (uso em scripts/CI)")
+
+    # doctor (diagnose install; --fix installs what it can)
+    doctor_p = subparsers.add_parser("doctor", help="Diagnosticar a instalação e recursos opcionais")
+    doctor_p.add_argument("--fix", action="store_true", help="Tentar instalar/corrigir o que estiver faltando")
+    doctor_p.add_argument("-y", "--yes", action="store_true", help="Não perguntar durante o --fix (scripts/CI)")
+
+    # self-update (update curlcmd via the detected install method)
+    selfup_p = subparsers.add_parser("self-update", help="Atualizar o curlcmd pelo método de instalação detectado")
+    selfup_p.add_argument("-y", "--yes", action="store_true", help="Rodar a atualização sem perguntar")
 
     # payloads sync / update / list / search / show
     payloads_p = subparsers.add_parser("payloads", help="Manage payload sources and catalog")
@@ -292,6 +318,9 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "export-history",
         "delete-history",
         "clear-history",
+        "setup",
+        "doctor",
+        "self-update",
         "payloads",
         "discover",
         "bounty-scan",

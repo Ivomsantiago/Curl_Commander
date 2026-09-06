@@ -80,6 +80,18 @@ def run_cli(args) -> int:
                 repo.clear()
                 _console.print("[green]History cleared.[/green]")
                 return EXIT_OK
+            case "setup":
+                from curlcommander.cli.onboarding import run_setup
+
+                return run_setup(args)
+            case "doctor":
+                from curlcommander.cli.onboarding import run_doctor
+
+                return run_doctor(args)
+            case "self-update":
+                from curlcommander.cli.onboarding import run_self_update
+
+                return run_self_update(args)
             case "payloads":
                 return _run_payloads(args)
             case "discover":

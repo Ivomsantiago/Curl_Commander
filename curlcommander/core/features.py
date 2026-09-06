@@ -99,3 +99,39 @@ def require(name: str) -> None:
     """Raise FeatureUnavailable with the PT-BR message if the feature is absent."""
     if not available(name):
         raise FeatureUnavailable(missing_message(name))
+
+
+def packages_for(names: list[str]) -> list[str]:
+    """The pip packages that provide the given feature names (order preserved)."""
+    packages: list[str] = []
+    for name in names:
+        feat = FEATURES.get(name)
+        if feat is None:
+            continue
+        for pkg in feat.packages:
+            if pkg not in packages:
+                packages.append(pkg)
+    return packages
+
+
+def post_install_for(names: list[str]) -> list[str]:
+    """Extra shell steps (e.g. `playwright install chromium`) for the features."""
+    steps: list[str] = []
+    for name in names:
+        feat = FEATURES.get(name)
+        if feat is None:
+            continue
+        for step in feat.post_install:
+            if step not in steps:
+                steps.append(step)
+    return steps
+
+
+def pip_install_command(packages: list[str]) -> list[str]:
+    """Argv that installs ``packages`` into the running interpreter's environment.
+
+    Uses ``sys.executable -m pip``, which targets the venv (or pipx/uv tool
+    venv) that hosts the running curlcmd — so the extras land next to it. The
+    caller must check :func:`is_frozen` first (a standalone binary has no pip).
+    """
+    return [sys.executable, "-m", "pip", "install", "--upgrade", *packages]
