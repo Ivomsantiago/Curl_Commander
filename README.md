@@ -456,3 +456,7 @@ O `core/` nunca importa de `cli/` ou `gui/`. Veja o [`CONTRIBUTING.md`](CONTRIBU
   bypass de auth/IDOR.
 - mTLS (`--cert/--key/--cacert`), `--resolve`, `--unix-socket`, pinning.
 - Export para Postman/coleções, coleções de requisições e ambientes.
+
+## Changelog
+
+Veja o [CHANGELOG.md](https://github.com/Ivomsantiago/Curl_Commander/blob/main/CHANGELOG.md) para todas as versões e histórico de mudanças.
