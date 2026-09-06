@@ -81,3 +81,34 @@ def test_add_custom_source(tmp_path):
 def test_unknown_source_raises():
     with pytest.raises(ps.PayloadSourceError):
         ps.sync("does-not-exist")
+
+
+def test_freshness_marker_and_stale(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta
+
+    d = tmp_path / "src"
+    d.mkdir()
+    (d / "wordlist.txt").write_text("a\n", encoding="utf-8")
+    monkeypatch.setattr(ps, "source_dir", lambda name: d)
+    monkeypatch.setattr(ps, "load_sources", lambda: {"s": ps.Source("s", "", "s", [])})
+
+    # A fresh sentinel: not stale.
+    ps._mark_synced(d)
+    assert ps.last_sync_time("s") is not None
+    assert ps.is_stale("s") is False
+    assert ps.stale_sources() == []
+
+    # An old sentinel: stale, and listed by stale_sources().
+    old = (datetime.now() - timedelta(days=ps.STALE_AFTER_DAYS + 10)).isoformat(timespec="seconds")
+    (d / ps.SYNC_MARKER).write_text(old, encoding="utf-8")
+    assert ps.is_stale("s") is True
+    assert ps.stale_sources() == ["s"]
+
+
+def test_warn_stale_payloads_helper(monkeypatch):
+    from curlcommander.cli import runner
+
+    monkeypatch.setattr(runner.payload_sources, "stale_sources", lambda: ["seclists"])
+    runner._warn_stale_payloads()  # must not raise; prints a one-line notice
+    monkeypatch.setattr(runner.payload_sources, "stale_sources", lambda: [])
+    runner._warn_stale_payloads()

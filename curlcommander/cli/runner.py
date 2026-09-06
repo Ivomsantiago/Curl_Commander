@@ -396,6 +396,7 @@ def _run_fuzz(config: RequestConfig, args) -> int:
             "[bold yellow]★[/bold yellow]" if r.anomaly else "",
         )
     _console.print(table)
+    _warn_stale_payloads()
     return EXIT_OK
 
 
@@ -523,6 +524,7 @@ def _run_discover(args) -> int:
         )
     )
     _print_fuzz_table(results, f"Discovery — {len(results)} hits")
+    _warn_stale_payloads()
     return EXIT_OK
 
 
@@ -716,7 +718,21 @@ def _run_bounty_scan(args) -> int:
             )
     if total == 0:
         _console.print("[dim]No anomalies flagged. Candidates are leads to investigate, not confirmations.[/dim]")
+    _warn_stale_payloads()
     return EXIT_OK
+
+
+def _warn_stale_payloads() -> None:
+    """Non-blocking one-line PT-BR notice if a synced source is out of date (0.3)."""
+    try:
+        stale = payload_sources.stale_sources()
+    except Exception:
+        return
+    if stale:
+        _console.print(
+            f"[yellow]Aviso:[/yellow] as wordlists de [bold]{', '.join(stale)}[/bold] não são atualizadas "
+            f"há mais de {payload_sources.STALE_AFTER_DAYS} dias. Rode: [bold]curlcmd payloads update[/bold]"
+        )
 
 
 def _int_set(value: str | None) -> set[int] | None:
