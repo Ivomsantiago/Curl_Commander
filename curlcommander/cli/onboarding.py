@@ -166,7 +166,7 @@ def _install_features(selected: list[str], assume_yes: bool) -> bool:
     missing = [name for name in selected if not features.available(name)]
     already = [name for name in selected if features.available(name)]
     for name in already:
-        _console.print(f"[green]✓[/green] {features.FEATURES[name].label} já disponível — nada a fazer.")
+        _console.print(f"[green]OK[/green] {features.FEATURES[name].label} já disponível — nada a fazer.")
 
     if not missing:
         # Still run post-install steps that may be pending (e.g. chromium).
@@ -175,7 +175,7 @@ def _install_features(selected: list[str], assume_yes: bool) -> bool:
     packages = features.packages_for(missing)
     _console.print(
         "\nVou instalar os pacotes abaixo com pip (baixando do PyPI pela rede):\n"
-        + "\n".join(f"  • {pkg}" for pkg in packages)
+        + "\n".join(f"  - {pkg}" for pkg in packages)
     )
     if not _confirm("Prosseguir com a instalação?", assume_yes):
         return False
@@ -209,7 +209,7 @@ def _run_post_install(names: list[str], assume_yes: bool) -> bool:
                     "[bold]python -m playwright install chromium[/bold]"
                 )
         elif browser.browser_available():
-            _console.print("[green]✓[/green] Chromium já disponível.")
+            _console.print("[green]OK[/green] Chromium já disponível.")
     return ok
 
 
@@ -224,7 +224,7 @@ def _sync_payloads(assume_yes: bool) -> bool:
     try:
         for name in payload_sources.load_sources():
             dest = payload_sources.sync(name)
-            _console.print(f"[green]sincronizado[/green] {name} → {dest}")
+            _console.print(f"[green]sincronizado[/green] {name} -> {dest}")
     except payload_sources.PayloadSourceError as exc:
         _console.print(f"[red]Erro ao sincronizar payloads:[/red] {exc}")
         ok = False
@@ -372,7 +372,7 @@ def run_doctor(args) -> int:
     table.add_column("Detalhe", overflow="fold")
     table.add_column("Correção", overflow="fold")
     for c in checks:
-        mark = "[green]✓[/green]" if c.ok else ("[red]✗[/red]" if c.essential else "[yellow]○[/yellow]")
+        mark = "[green]OK[/green]" if c.ok else ("[red]X[/red]" if c.essential else "[yellow]![/yellow]")
         table.add_row(mark, c.name, c.detail, "" if c.ok else c.fix_hint)
     _console.print(table)
 
@@ -474,6 +474,6 @@ def _print_feature_status() -> None:
     for name in _FEATURE_FLAGS:
         feat = features.FEATURES[name]
         avail = features.available(name)
-        mark = "[green]✓[/green]" if avail else "[yellow]○[/yellow]"
+        mark = "[green]OK[/green]" if avail else "[yellow]![/yellow]"
         table.add_row(mark, feat.label, "" if avail else f"curlcmd setup --{name}")
     _console.print(table)
