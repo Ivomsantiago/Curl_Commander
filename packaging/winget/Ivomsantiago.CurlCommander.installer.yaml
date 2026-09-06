@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+#
+# O curlcmd é distribuído como um binário único (portable). O hash abaixo deve
+# ser substituído pelo SHA256 real do curlcmd.exe daquela release (ele aparece
+# no arquivo SHA256SUMS anexado à release do GitHub). Enquanto for um modelo,
+# o valor REPLACE_WITH_SHA256 é intencionalmente inválido.
+PackageIdentifier: Ivomsantiago.CurlCommander
+PackageVersion: 0.2.0
+InstallerType: portable
+Commands:
+  - curlcmd
+ReleaseDate: 2026-01-01
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/Ivomsantiago/Curl_Commander/releases/download/v0.2.0/curlcmd.exe
+    InstallerSha256: REPLACE_WITH_SHA256
+ManifestType: installer
+ManifestVersion: 1.6.0

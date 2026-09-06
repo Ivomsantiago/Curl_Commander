@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: Ivomsantiago.CurlCommander
+PackageVersion: 0.2.0
+PackageLocale: en-US
+Publisher: Ivomsantiago
+PublisherUrl: https://github.com/Ivomsantiago
+PackageName: CurlCommander
+PackageUrl: https://github.com/Ivomsantiago/Curl_Commander
+License: MIT
+LicenseUrl: https://github.com/Ivomsantiago/Curl_Commander/blob/main/LICENSE
+ShortDescription: Construtor de requisições HTTP e gerador de curl para testes de API/AppSec, no terminal.
+Description: |-
+  CurlCommander é um construtor visual de requisições HTTP e gerador de curl
+  para o terminal, voltado a testes de API e AppSec. Preserva ordem e
+  duplicatas de cabeçalhos/parâmetros, oferece transporte de bytes crus,
+  fuzzing, validadores em navegador e um proxy interceptador (recursos
+  opcionais). Este pacote instala o binário standalone; recursos que dependem
+  de Python (navegador/proxy/payloads) exigem uma instalação via Python.
+Tags:
+  - http
+  - curl
+  - api-testing
+  - security
+  - pentest
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
