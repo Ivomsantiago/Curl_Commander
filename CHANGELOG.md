@@ -4,6 +4,40 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Não lançado] — GUI vira "Burp na TUI" + defaults consertados
+
+_Seção em português._
+
+### Fase 0 — defaults quebrados
+- **Saída da TUI visível e robusta**: `compose()` agora inclui Header e Footer
+  (os atalhos aparecem na tela), há um botão **Sair**, e Ctrl+Q/Ctrl+C saem
+  mesmo com foco num Input; confirmação só enquanto há requisição em andamento.
+- **`curlcmd setup` prepara tudo por padrão**: sem flags e interativo, pergunta
+  grupo a grupo (payloads = sim; resto = pergunta); `--yes` sem flags equivale a
+  `--all --yes`.
+- **Frescor de wordlists**: marcador de sync por fonte; `doctor` sinaliza fontes
+  com > 30 dias e `fuzz`/`discover`/`bounty-scan` imprimem um aviso não
+  bloqueante.
+
+### Fase 1 — abas Proxy / Repeater / Intruder
+- A GUI é um `TabbedContent`: **Repeater** (sub-abas persistentes, editor raw,
+  histórico de reenvios), **Intruder** (posições `§…§`, 4 modos nomeados sobre o
+  motor de fuzz, grade ordenável com anomalia), **Proxy** (captura ao vivo,
+  escopo esmaecido, "enviar para Repeater/Intruder"). Roteamento por Ctrl+R/Ctrl+I.
+- Visualizador de resposta reutilizável: Pretty/Raw/Headers/Cookies, busca com
+  contagem navegável, diff entre respostas.
+- `core/intruder.py` mapeia os 4 modos sobre `run_fuzz` (sem duplicar lógica).
+
+### Fase 2 — mais motor na GUI
+- `core/passive.py`: análise passiva (headers de segurança, flags de cookie,
+  CORS, erro verboso, fingerprint) como candidatos, com saída SARIF; botão
+  **Analisar** na resposta.
+- Opções de requisição completas na GUI (HTTP/2, compressed, cookies).
+
+### Correção
+- `send()` preservava `params=[]` e apagava a query embutida na URL; agora a
+  query da URL sobrevive (o curl a mantém).
+
 ## [Não lançado] — Instalação impecável & onboarding em PT-BR
 
 _Esta seção está em português; as anteriores permanecem no idioma original._
