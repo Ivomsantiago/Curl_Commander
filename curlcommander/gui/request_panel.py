@@ -130,8 +130,10 @@ class RequestPanel(Widget):
                 yield Checkbox("Follow redirects", value=True, id="redirects-checkbox")
 
             with Horizontal(id="button-row"):
-                yield Button("Send", id="send-btn", variant="primary")
-                yield Button("Curl Only", id="curl-only-btn")
+                yield Button("Enviar", id="send-btn", variant="primary")
+                yield Button("Só curl", id="curl-only-btn")
+                yield Button("Limpar", id="clear-btn")
+                yield Button("Sair", id="quit-btn", variant="error")
 
     # ------------------------------------------------------------------
     # Event handlers — propagate config changes to parent

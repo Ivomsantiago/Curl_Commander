@@ -1,7 +1,9 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.widgets import Footer, Header
 
+from curlcommander import __version__
 from curlcommander.config import DB_PATH
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.http_client import send
@@ -15,6 +17,7 @@ from curlcommander.storage.history_repo import HistoryRepo
 
 class CurlCommanderApp(App):
     TITLE = "CurlCommander"
+    SUB_TITLE = f"v{__version__}"
     CSS = """
     Screen {
         layout: vertical;
@@ -35,18 +38,22 @@ class CurlCommanderApp(App):
     BINDINGS = [
         # Ctrl+Enter is unreliable across terminal emulators; Ctrl+S is the
         # documented, portable primary. Ctrl+Enter kept as a bonus where it works.
-        Binding("ctrl+s", "send_request", "Send", show=True),
-        Binding("ctrl+enter", "send_request", "Send", show=False),
-        Binding("ctrl+y", "copy_curl", "Copy curl", show=True),
-        Binding("ctrl+x", "cancel_request", "Cancel", show=True),
-        Binding("ctrl+l", "clear_form", "Clear Form", show=True),
-        Binding("ctrl+h", "focus_history", "History", show=True),
-        # Ctrl+Q (not bare 'q', which conflicts with typing in inputs).
-        Binding("ctrl+q", "quit", "Quit", show=True),
+        Binding("ctrl+s", "send_request", "Enviar", show=True),
+        Binding("ctrl+enter", "send_request", "Enviar", show=False),
+        Binding("ctrl+y", "copy_curl", "Copiar curl", show=True),
+        Binding("ctrl+x", "cancel_request", "Cancelar", show=True),
+        Binding("ctrl+l", "clear_form", "Limpar", show=True),
+        Binding("ctrl+h", "focus_history", "Histórico", show=True),
+        # Sair: Ctrl+Q e Ctrl+C, com priority para pegar mesmo com foco num
+        # Input/TextArea (o widget focado consome o resto, não estes atalhos).
+        Binding("ctrl+q", "quit", "Sair", show=True, priority=True),
+        Binding("ctrl+c", "quit", "Sair", show=False, priority=True),
     ]
 
     _last_curl: str = ""
     _last_content: bytes = b""
+    _in_flight: bool = False
+    _quit_armed: bool = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -65,6 +72,7 @@ class CurlCommanderApp(App):
     # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
         with Vertical():
             with Horizontal(id="top-area"):
                 yield RequestPanel(id="request-panel")
@@ -72,10 +80,23 @@ class CurlCommanderApp(App):
                     yield ResponsePanel(id="response-panel")
                     yield CurlPanel(id="curl-panel")
             yield HistoryPanel(id="history-panel")
+        yield Footer()
 
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
+
+    def action_quit(self) -> None:  # type: ignore[override]
+        # Confirm quit only while a request is in flight (never blocks normal
+        # exit): first Ctrl+Q arms, second one (or after it finishes) exits.
+        if self._in_flight and not self._quit_armed:
+            self._quit_armed = True
+            self.notify(
+                "Requisição em andamento. Pressione Ctrl+Q de novo para sair mesmo assim.",
+                severity="warning",
+            )
+            return
+        self.exit()
 
     def action_send_request(self) -> None:
         config = self.query_one(RequestPanel).get_config()
@@ -106,6 +127,12 @@ class CurlCommanderApp(App):
         self.query_one(ResponsePanel).query_one("#response-status").update("cancelled")
 
     def on_button_pressed(self, event) -> None:
+        if event.button.id == "quit-btn":
+            self.action_quit()
+            return
+        if event.button.id == "clear-btn":
+            self.action_clear_form()
+            return
         if event.button.id != "save-response-btn":
             return
         if not self._last_content:
@@ -154,9 +181,14 @@ class CurlCommanderApp(App):
         self.query_one(CurlPanel).update_curl(curl_cmd)
 
         # Sending indicator (Ctrl+X cancels the exclusive worker).
-        self.query_one(ResponsePanel).query_one("#response-status").update("⏳ sending…")
+        self._in_flight = True
+        self.query_one(ResponsePanel).query_one("#response-status").update("⏳ enviando…")
 
-        result = await send(config)
+        try:
+            result = await send(config)
+        finally:
+            self._in_flight = False
+            self._quit_armed = False
         self._last_content = result.content
         self.query_one(ResponsePanel).show_result(result)
 
