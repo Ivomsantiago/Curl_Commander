@@ -18,6 +18,8 @@ SOAP/XML, gRPC-web, legacy forms), and scriptable enough to run in CI.
 
 Python 3.11+ · `httpx` · `rich` · `prompt_toolkit` · `textual`.
 
+![CurlCommander demo](https://raw.githubusercontent.com/Ivomsantiago/Curl_Commander/main/docs/demo.gif)
+
 ---
 
 ## 1. Installation

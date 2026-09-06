@@ -4,6 +4,20 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.3] - 2026-09-06 — Correção da demo no PyPI + versão consistente
+### Corrigido
+- **Imagem da demo quebrada no PyPI.** O README publicado no PyPI referenciava
+  a demo por caminho relativo (`docs/demo.gif`), que o PyPI não resolve (não tem
+  contexto do repositório). Passa a usar a URL absoluta
+  `https://raw.githubusercontent.com/.../main/docs/demo.gif` no README PT-BR e EN,
+  e remove a nota antiga de "espaço reservado".
+- **Versão inconsistente.** `curlcommander.__version__` estava em `0.2.0`
+  enquanto o pacote era `0.3.1`; ambos agora em `0.3.3`, então `curlcmd --version`
+  e o metadado do PyPI batem.
+
+> Observação: como a descrição de uma versão já publicada no PyPI é imutável, a
+> correção da imagem só aparece na página do PyPI após publicar esta nova versão.
+
 ## [0.3.1] - 2026-09-06 — Correções de release e publicação
 ### Corrigido
 - Correções de configuração e metadados de release.
