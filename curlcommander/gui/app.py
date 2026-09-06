@@ -1,7 +1,7 @@
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Footer, Header
+from textual.widgets import Footer, Header, TabbedContent, TabPane
 
 from curlcommander import __version__
 from curlcommander.config import DB_PATH
@@ -10,6 +10,9 @@ from curlcommander.core.http_client import send
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.gui.curl_panel import CurlPanel
 from curlcommander.gui.history_panel import HistoryPanel
+from curlcommander.gui.intruder_panel import IntruderPanel
+from curlcommander.gui.proxy_panel import ProxyPanel
+from curlcommander.gui.repeater_panel import RepeaterPanel
 from curlcommander.gui.request_panel import RequestPanel
 from curlcommander.gui.response_panel import ResponsePanel
 from curlcommander.storage.history_repo import HistoryRepo
@@ -44,6 +47,8 @@ class CurlCommanderApp(App):
         Binding("ctrl+x", "cancel_request", "Cancelar", show=True),
         Binding("ctrl+l", "clear_form", "Limpar", show=True),
         Binding("ctrl+h", "focus_history", "Histórico", show=True),
+        Binding("ctrl+r", "to_repeater", "→Repeater", show=True),
+        Binding("ctrl+i", "to_intruder", "→Intruder", show=True),
         # Sair: Ctrl+Q e Ctrl+C, com priority para pegar mesmo com foco num
         # Input/TextArea (o widget focado consome o resto, não estes atalhos).
         Binding("ctrl+q", "quit", "Sair", show=True, priority=True),
@@ -73,14 +78,52 @@ class CurlCommanderApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
-        with Vertical():
-            with Horizontal(id="top-area"):
-                yield RequestPanel(id="request-panel")
-                with Vertical(id="right-area"):
-                    yield ResponsePanel(id="response-panel")
-                    yield CurlPanel(id="curl-panel")
-            yield HistoryPanel(id="history-panel")
+        with TabbedContent(initial="tab-request", id="main-tabs"):
+            with TabPane("Requisição", id="tab-request"):
+                with Vertical():
+                    with Horizontal(id="top-area"):
+                        yield RequestPanel(id="request-panel")
+                        with Vertical(id="right-area"):
+                            yield ResponsePanel(id="response-panel")
+                            yield CurlPanel(id="curl-panel")
+                    yield HistoryPanel(id="history-panel")
+            with TabPane("Repeater", id="tab-repeater"):
+                yield RepeaterPanel(id="repeater-panel")
+            with TabPane("Intruder", id="tab-intruder"):
+                yield IntruderPanel(id="intruder-panel")
+            with TabPane("Proxy", id="tab-proxy"):
+                yield ProxyPanel(id="proxy-panel")
         yield Footer()
+
+    # ------------------------------------------------------------------
+    # Burp-style routing between tabs
+    # ------------------------------------------------------------------
+
+    def _switch_to(self, tab_id: str) -> None:
+        self.query_one("#main-tabs", TabbedContent).active = tab_id
+
+    def action_to_repeater(self) -> None:
+        """Send the request being built to a new Repeater tab (Ctrl+R)."""
+        config = self.query_one(RequestPanel).get_config()
+        self.query_one(RepeaterPanel).add_request(config)
+        self._switch_to("tab-repeater")
+
+    def action_to_intruder(self) -> None:
+        config = self.query_one(RequestPanel).get_config()
+        self.query_one(IntruderPanel).load_request(config)
+        self._switch_to("tab-intruder")
+
+    def on_proxy_panel_send_to_repeater(self, event: ProxyPanel.SendToRepeater) -> None:
+        self.query_one(RepeaterPanel).add_request(event.config)
+        self._switch_to("tab-repeater")
+
+    def on_proxy_panel_send_to_intruder(self, event: ProxyPanel.SendToIntruder) -> None:
+        self.query_one(IntruderPanel).load_request(event.config)
+        self._switch_to("tab-intruder")
+
+    def on_intruder_panel_promote_to_repeater(self, event: IntruderPanel.PromoteToRepeater) -> None:
+        self.query_one(RepeaterPanel).add_request(event.config)
+        self._switch_to("tab-repeater")
 
     # ------------------------------------------------------------------
     # Actions
