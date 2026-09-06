@@ -37,7 +37,9 @@ def proxy_available() -> bool:
 
 def require_proxy() -> None:
     if not proxy_available():
-        raise ProxyError("the proxy feature needs the optional extra: pip install 'curlcommander[proxy]'")
+        from curlcommander.core import features
+
+        raise ProxyError(features.missing_message("proxy"))
 
 
 def ca_dir() -> Path:
