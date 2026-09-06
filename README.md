@@ -19,7 +19,7 @@ e programáveis o bastante para rodar em CI.
 
 Python 3.11+ · `httpx` · `rich` · `prompt_toolkit` · `textual`.
 
-![Demonstração do CurlCommander](docs/demo.gif)
+![Demonstração do CurlCommander](https://raw.githubusercontent.com/Ivomsantiago/Curl_Commander/main/docs/demo.gif)
 
 > _O arquivo `docs/demo.gif` é um espaço reservado para a demonstração animada
 > da ferramenta. Substitua-o por uma gravação real do `curlcmd` em uso._
