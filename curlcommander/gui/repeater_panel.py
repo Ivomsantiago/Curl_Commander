@@ -69,7 +69,7 @@ class RepeaterTab(Widget):
         rv = self.query_one(ResponseView)
         self._prev_body = rv.current_body() if self._history else None
         result = await send(config)
-        rv.show_result(result)
+        rv.show_result(result, url=config.url)
         n = len(self._history) + 1
         self._history.append(f"#{n}  {result.status_code or 'ERR'}  {result.size_bytes} B  {result.duration_ms:.0f} ms")
         self.query_one("#rt-history", Static).update("Reenvios:\n" + "\n".join(self._history))

@@ -43,6 +43,7 @@ class ResponseView(Widget):
         self._result: ResponseResult | None = None
         self._matches: list[int] = []  # character offsets of the search term
         self._match_idx: int = 0
+        self._url: str = ""
 
     def compose(self) -> ComposeResult:
         yield Label("", id="rv-status")
@@ -52,12 +53,14 @@ class ResponseView(Widget):
             yield Label("", id="rv-count")
             yield Button("◀", id="rv-prev")
             yield Button("▶", id="rv-next")
+            yield Button("Analisar", id="rv-analyze")
         yield TextArea("", read_only=True, id="rv-body")
 
     # -- data ---------------------------------------------------------------
 
-    def show_result(self, result: ResponseResult) -> None:
+    def show_result(self, result: ResponseResult, url: str = "") -> None:
         self._result = result
+        self._url = url
         status = self.query_one("#rv-status", Label)
         if result.error:
             status.update(f"[b red]Erro:[/b red] {result.error}")
@@ -166,6 +169,33 @@ class ResponseView(Widget):
         elif event.button.id == "rv-prev":
             self.prev_match()
             event.stop()
+        elif event.button.id == "rv-analyze":
+            self.analyze()
+            event.stop()
+
+    def analyze(self) -> int:
+        """Run passive analysis on the current response; show findings. Returns count."""
+        if self._result is None:
+            return 0
+        from curlcommander.core import passive
+
+        findings = passive.analyze(self._result, self._result_url())
+        status = self.query_one("#rv-status", Label)
+        if not findings:
+            self.query_one("#rv-body", TextArea).load_text("Análise passiva: nenhum candidato encontrado.")
+            status.update("[green]Análise passiva: 0 candidatos[/green]")
+            return 0
+        colours = {"high": "red", "medium": "yellow", "low": "cyan", "info": "dim"}
+        lines = ["Análise passiva (candidatos a investigar, não confirmações):", ""]
+        for f in findings:
+            lines.append(f"[{f.severity.upper()}] {f.title} — {f.detail}")
+        self.query_one("#rv-body", TextArea).load_text("\n".join(lines))
+        top = findings[0].severity
+        status.update(f"[{colours.get(top, 'white')}]Análise: {len(findings)} candidato(s)[/]")
+        return len(findings)
+
+    def _result_url(self) -> str:
+        return self._url
 
 
 def _find_offsets(text: str, term: str) -> list[int]:

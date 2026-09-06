@@ -143,3 +143,37 @@ async def test_response_view_search_count(tmp_path):
         rv.query_one("#rv-search", Input).value = "foo"
         await pilot.pause()
         assert rv.match_count() == 3  # "N/total" navigable count
+
+
+async def test_response_view_analyze_button_reports_candidates(tmp_path):
+    app = _app(tmp_path)
+    async with app.run_test() as pilot:
+        rp = app.query_one(RepeaterPanel)
+        pid = rp.add_request(RequestConfig(method="GET", url="https://t/x"))
+        await pilot.pause()
+        rv = app.query_one(f"#{pid}", TabPane).query_one(ResponseView)
+        # A wide-open response: no security headers, a flagless cookie.
+        rv.show_result(
+            ResponseResult(200, "OK", {"set-cookie": "sid=1"}, "hi", "text/html", 1.0, 2, None),
+            url="https://t/x",
+        )
+        await pilot.pause()
+        assert rv.analyze() > 0  # passive analysis surfaced candidates
+
+
+async def test_request_panel_has_http2_compressed_cookies(tmp_path):
+    from textual.widgets import Checkbox
+
+    from curlcommander.gui.request_panel import RequestPanel
+
+    app = _app(tmp_path)
+    async with app.run_test() as pilot:
+        panel = app.query_one(RequestPanel)
+        panel.query_one("#url-input", Input).value = "https://x/y"
+        panel.query_one("#http2-checkbox", Checkbox).value = True
+        panel.query_one("#compressed-checkbox", Checkbox).value = True
+        panel.query_one("#cookies-input", Input).value = "a=1; b=2"
+        await pilot.pause()
+        cfg = panel.get_config()
+        assert cfg.http2 is True and cfg.compressed is True
+        assert cfg.cookies.get("a") == "1" and cfg.cookies.get("b") == "2"
