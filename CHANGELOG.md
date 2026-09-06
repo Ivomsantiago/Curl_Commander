@@ -4,7 +4,7 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Não lançado] — GUI vira "Burp na TUI" + defaults consertados
+## [0.3.0] - 2026-09-06 — GUI vira "Burp na TUI" + defaults consertados
 
 _Seção em português._
 
