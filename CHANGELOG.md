@@ -5,6 +5,12 @@ basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [0.3.0] - 2026-09-06 — GUI vira "Burp na TUI" + defaults consertados
+## [0.3.1] - 2026-09-06 — Correções de release e publicação
+
+### Corrigido
+- Correções de configuração e metadados de release.
+- Ajustes no fluxo de publicação do pacote no PyPI via GitHub Actions.
+- Correções menores sem alteração da API pública ou introdução de novas funcionalidades.
 
 _Seção em português._
 
