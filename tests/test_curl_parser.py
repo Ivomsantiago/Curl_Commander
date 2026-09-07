@@ -52,6 +52,70 @@ def test_import_rejects_non_curl():
         parse_curl("wget https://x/y")
 
 
+# --- Windows "Copy as cURL (cmd)" export (cmd.exe caret escaping) ---------
+
+
+def test_import_cmd_export_url_and_cookie_percent_encoding():
+    """Chrome/Firefox devtools on Windows escape every char of the value with
+    ``^``; a literal ``%3D%3D`` in a cookie comes out as ``^%^3D^%^3D``."""
+    cmd = (
+        'curl --url ^"https://api.example.com/data?token=1%3D2^" ^\n'
+        '  -H ^"Cookie: session=abc^%^3D^%^3D; theme=dark^" ^\n'
+        "  --compressed"
+    )
+    cfg = parse_curl(cmd)
+    assert cfg.url == "https://api.example.com/data"
+    assert cfg.params.items() == [("token", "1=2")]
+    assert cfg.headers.get("Cookie") == "session=abc%3D%3D; theme=dark"
+    assert cfg.compressed is True
+
+
+def test_import_cmd_export_nested_quotes_in_sec_ch_ua():
+    """A nested literal ``"`` inside a header value (e.g. Sec-CH-UA) is
+    escaped as ``^^"`` — doubled caret — distinct from the single ``^"`` that
+    wraps the whole value; both must round-trip to the real header text."""
+    cmd = (
+        'curl --url ^"https://api.example.com/^" ^\n'
+        '  -H ^"sec-ch-ua: ^^"Chromium^^";v=^^"120^^", ^^"Not)A;Brand^^";v=^^"24^^"^" ^\n'
+        '  -H ^"accept: application/json^"'
+    )
+    cfg = parse_curl(cmd)
+    assert cfg.url == "https://api.example.com/"
+    assert cfg.headers.get("sec-ch-ua") == '"Chromium";v="120", "Not)A;Brand";v="24"'
+    assert cfg.headers.get("accept") == "application/json"
+
+
+def test_import_cmd_export_positional_url_and_multiple_headers():
+    cmd = (
+        'curl ^"https://target/api/login^" ^\n'
+        '  -H ^"Content-Type: application/json^" ^\n'
+        '  -H ^"Cookie: a=1^&b=2^" ^\n'
+        '  --data-raw ^"{^^\\"u^^\\":^^\\"x^^\\"}^"'
+    )
+    cfg = parse_curl(cmd)
+    assert cfg.url == "https://target/api/login"
+    assert cfg.headers.get("Content-Type") == "application/json"
+    assert cfg.headers.get("Cookie") == "a=1&b=2"
+    assert cfg.body == '{"u":"x"}'
+
+
+def test_import_bash_command_with_literal_caret_is_not_treated_as_cmd_export():
+    """A real bash command whose quoted value happens to contain a bare ``^``
+    must not be mangled — the cmd-export heuristic requires ``^"`` right
+    after ``curl``/``--url``/``-H``/``-b``, never a lone caret elsewhere."""
+    cmd = "curl 'https://x/y' -H 'X-Signature: abc^def==' -d 'a=1'"
+    cfg = parse_curl(cmd)
+    assert cfg.headers.get("X-Signature") == "abc^def=="
+    assert cfg.body == "a=1"
+
+
+def test_import_windows_caret_continuation_still_uses_old_path():
+    """Regular (non cmd-export) caret line continuation, no ``^"`` markers."""
+    cmd = 'curl https://x/y ^\n -H "Accept: application/json"'
+    cfg = parse_curl(cmd)
+    assert cfg.headers.get("Accept") == "application/json"
+
+
 def _cfgs():
     return [
         RequestConfig(method="GET", url="https://x/y"),

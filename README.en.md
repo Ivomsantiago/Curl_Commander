@@ -10,7 +10,8 @@
 A terminal HTTP request builder, `curl` generator, and API/AppSec testing tool.
 Build and replay requests, generate a faithful `curl`, import from DevTools or
 Burp, fuzz, assert, and drive raw byte-level requests — from one entrypoint,
-`curlcmd`.
+`curlcmd` (also installed as `curlcommander`, an alias matching the package
+name).
 
 Built for analysts and engineers who need requests reliable enough to paste into
 a pentest report, expressive enough to test any API style (REST, GraphQL,
@@ -183,6 +184,18 @@ disable it with `--no-redact` on a shared machine.
 in the allowlist. `--dry-run` shows the exact bytes without sending.
 `--no-verify` always prints a visible warning. `--evidence DIR --engagement
 LABEL` saves raw request + response + metadata for the report.
+
+A line prefixed with `!` in `scope.txt` **excludes** a host, even if it also
+matches a broader wildcard in the allowlist — the exclusion always wins over
+the allow, regardless of line order in the file. Useful when a specific
+subdomain (staging, a third-party panel, etc.) falls under the same wildcard
+as the target but must never be touched:
+
+```text
+# scope.txt
+*.karwei.nl
+!horrenconfigurator.karwei.nl
+```
 
 ---
 
@@ -412,6 +425,21 @@ curlcmd validate open-redirect "https://t/r?next=§DEST§" --engagement ENG
 ```
 
 `--evidence DIR` saves a screenshot, the DOM, a HAR and a Playwright trace.
+
+**Authenticated validation.** Anonymous CORS is rarely exploitable — the
+real-impact scenario is the same bug behind a login. `--cookie k=v`
+(repeatable), `--auth-bearer TOKEN` and `-H`/`--header` (repeatable) apply to
+all five HTTP/browser kinds (`cors`, `open-redirect`, `xss`, `clickjacking`,
+`csrf`): for `cors`/`open-redirect` they go into the HTTP request headers;
+for the browser validators the cookie is injected into the Playwright
+context before framing/submitting/navigating, and the extra headers apply to
+the whole context:
+
+```bash
+curlcmd validate cors https://api.t/data --origin https://evil.example \
+  --cookie session=abc123 --auth-bearer $TOKEN --engagement ENG
+curlcmd validate clickjacking https://t/admin-panel --cookie session=abc123 --engagement ENG
+```
 
 **Blind SSRF via out-of-band** (the `[oob]` extra): confirms blind SSRF/XXE/RCE —
 effects invisible in the HTTP response — by making the target connect to a host

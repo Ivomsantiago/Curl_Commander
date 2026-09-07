@@ -27,6 +27,10 @@ async def validate_clickjacking(
     session._enforce(url)  # scope check before loading the target in a frame
     page = await session.new_page()
     try:
+        # set_content() never goes through goto(), so any session cookies
+        # (--cookie, e.g. an auth session) must be flushed here or the framed
+        # target loads unauthenticated.
+        await session.apply_pending_cookies(url)
         await page.set_content(_ATTACKER_PAGE.replace("%URL%", url))
         await page.wait_for_timeout(400)
 

@@ -364,6 +364,32 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     val.add_argument("--evidence", metavar="DIR", help="Salva screenshot/DOM/HAR aqui")
     val.add_argument("--no-verify", action="store_true")
     val.add_argument("--timeout", type=float, default=30.0)
+    # Credentials for authenticated validation (cors, open-redirect, xss,
+    # clickjacking, csrf) — anonymous is rarely exploitable, authenticated is
+    # the scenario with actual impact.
+    val.add_argument(
+        "--cookie",
+        action="append",
+        dest="cookies",
+        default=[],
+        metavar="k=v",
+        help="Cookie de sessão a anexar à validação (repetível; cors/open-redirect/xss/clickjacking/csrf)",
+    )
+    val.add_argument(
+        "--auth-bearer",
+        dest="auth_bearer",
+        metavar="TOKEN",
+        help="Token Bearer a anexar à validação (Authorization: Bearer TOKEN)",
+    )
+    val.add_argument(
+        "-H",
+        "--header",
+        action="append",
+        dest="headers",
+        default=[],
+        metavar="Chave: Valor",
+        help="Cabeçalho extra a anexar à validação (repetível)",
+    )
     # SSRF (out-of-band via Interactsh)
     val.add_argument("--param", metavar="NOME", help="Parâmetro onde injetar o callback OOB (SSRF)")
     val.add_argument("--interactsh-server", metavar="HOST", help="Servidor Interactsh (padrão: público oast.pro)")

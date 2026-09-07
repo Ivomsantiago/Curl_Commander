@@ -10,7 +10,8 @@
 Construtor de requisições HTTP no terminal, gerador de `curl` e ferramenta de
 testes de API/AppSec. Monte e repita requisições, gere um `curl` fiel, importe
 do DevTools ou do Burp, faça fuzzing, valide asserções e dispare requisições
-byte a byte — tudo por um único ponto de entrada: `curlcmd`.
+byte a byte — tudo por um único ponto de entrada: `curlcmd` (também instalado
+como `curlcommander`, alias com o nome do pacote).
 
 Feito para analistas e engenheiros que precisam de requisições confiáveis o
 bastante para colar num relatório de pentest, expressivas o bastante para testar
@@ -207,6 +208,18 @@ padrão); não a desligue com `--no-redact` numa máquina compartilhada.
 alvo fora da allowlist. `--dry-run` mostra os bytes exatos sem enviar.
 `--no-verify` sempre imprime um aviso visível. `--evidence DIR --engagement
 LABEL` salva requisição + resposta cruas + metadados para o relatório.
+
+Uma linha prefixada com `!` no `scope.txt` **exclui** um host, mesmo que ele
+também bata com um wildcard mais amplo na allowlist — a exclusão sempre vence
+sobre o allow, não importa a ordem das linhas no arquivo. Útil quando um
+subdomínio específico (staging, um painel de terceiro, etc.) está sob o mesmo
+wildcard do alvo mas não deve nunca ser tocado:
+
+```text
+# scope.txt
+*.karwei.nl
+!horrenconfigurator.karwei.nl
+```
 
 ---
 
@@ -473,6 +486,21 @@ curlcmd validate open-redirect "https://t/r?next=§DEST§" --engagement ENG
 ```
 
 `--evidence DIR` salva um screenshot, o DOM, um HAR e um trace do Playwright.
+
+**Validação autenticada.** CORS anônimo quase nunca é explorável — o cenário
+de impacto real é o mesmo bug atrás de login. `--cookie k=v` (repetível),
+`--auth-bearer TOKEN` e `-H`/`--header` (repetível) valem para os cinco kinds
+HTTP/navegador (`cors`, `open-redirect`, `xss`, `clickjacking`, `csrf`): em
+`cors`/`open-redirect` entram nos cabeçalhos da requisição HTTP; nos
+validadores de navegador o cookie é injetado no contexto do Playwright antes
+de framear/enviar o formulário/navegar, e os cabeçalhos extras valem pro
+contexto inteiro:
+
+```bash
+curlcmd validate cors https://api.t/data --origin https://evil.example \
+  --cookie session=abc123 --auth-bearer $TOKEN --engagement ENG
+curlcmd validate clickjacking https://t/painel-admin --cookie session=abc123 --engagement ENG
+```
 
 **SSRF cega via out-of-band** (extra `[oob]`): confirma SSRF/XXE/RCE cegos —
 efeitos que não aparecem na resposta HTTP — fazendo o alvo conectar num host que

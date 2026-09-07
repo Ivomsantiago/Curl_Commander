@@ -36,7 +36,7 @@ from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, ru
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send, stream_send
 from curlcommander.core.logging_setup import get_logger, setup_logging
-from curlcommander.core.parsing import ParseError, parse_headers, parse_params
+from curlcommander.core.parsing import ParseError, parse_header, parse_headers, parse_params
 from curlcommander.core.raw_http import RawRequestError, parse_raw_request_bytes
 from curlcommander.core.raw_transport import (
     RawTransportError,
@@ -549,6 +549,37 @@ def _run_discover(args) -> int:
     return EXIT_OK
 
 
+def _validate_credentials(args) -> tuple[HeaderList, HeaderList]:
+    """Build (extra_headers, cookies) for `validate` from --auth-bearer/-H/--cookie.
+
+    Anonymous CORS/redirect/XSS/etc. probes are rarely exploitable in
+    practice; testing with a real session's credentials is what actually
+    proves impact. ``extra_headers`` carries Authorization + any -H; cookies
+    are kept separate since HTTP validators fold them into one Cookie header
+    while browser validators hand them to Playwright as real cookies.
+    """
+    extra_headers = HeaderList()
+    if getattr(args, "auth_bearer", None):
+        extra_headers.append("Authorization", f"Bearer {args.auth_bearer}")
+    for raw in getattr(args, "headers", None) or []:
+        k, v = parse_header(raw)
+        extra_headers.append(k, v)
+
+    cookies = HeaderList()
+    for c in getattr(args, "cookies", None) or []:
+        k, _, v = c.partition("=")
+        cookies.append(k.strip(), v)
+    return extra_headers, cookies
+
+
+def _validate_http_headers(extra_headers: HeaderList, cookies: HeaderList) -> HeaderList:
+    """Merge --auth-bearer/-H/--cookie into the header set an HTTP validator sends."""
+    headers = extra_headers.copy()
+    if cookies:
+        headers.append("Cookie", "; ".join(f"{k}={v}" for k, v in cookies.items()))
+    return headers
+
+
 def _run_validate(args) -> int:
     """`curlcmd validate <kind> <url>` — HTTP or browser-executed validators."""
     kind = args.kind
@@ -572,20 +603,37 @@ def _run_validate(args) -> int:
     if kind == "idor":
         return _run_idor(args, verify, timeout)
 
+    cred_headers, cred_cookies = _validate_credentials(args)
+
     from curlcommander.core import browser
 
     try:
         if kind == "cors":
             from curlcommander.core.validators.cors import validate_cors
 
-            result = asyncio.run(validate_cors(args.url, origin=args.origin, verify_ssl=verify, timeout=timeout))
+            result = asyncio.run(
+                validate_cors(
+                    args.url,
+                    origin=args.origin,
+                    verify_ssl=verify,
+                    timeout=timeout,
+                    headers=_validate_http_headers(cred_headers, cred_cookies),
+                )
+            )
         elif kind == "open-redirect":
             from curlcommander.core.validators.redirect import validate_open_redirect
 
-            result = asyncio.run(validate_open_redirect(args.url, verify_ssl=verify, timeout=timeout))
+            result = asyncio.run(
+                validate_open_redirect(
+                    args.url,
+                    verify_ssl=verify,
+                    timeout=timeout,
+                    headers=_validate_http_headers(cred_headers, cred_cookies),
+                )
+            )
         else:
             browser.require_browser()
-            result = asyncio.run(_run_browser_validator(kind, args, scope_entries, shot))
+            result = asyncio.run(_run_browser_validator(kind, args, scope_entries, shot, cred_headers, cred_cookies))
     except browser.BrowserError as exc:
         _console.print(f"[yellow]{exc}[/yellow]")
         return EXIT_USAGE
@@ -971,7 +1019,7 @@ def _run_import(args, repo: HistoryRepo) -> int:
     return EXIT_OK
 
 
-async def _run_browser_validator(kind: str, args, scope_entries, shot):
+async def _run_browser_validator(kind: str, args, scope_entries, shot, cred_headers=None, cred_cookies=None):
     from curlcommander.core.browser import BrowserSession
 
     evidence_dir = getattr(args, "evidence", None)
@@ -980,6 +1028,8 @@ async def _run_browser_validator(kind: str, args, scope_entries, shot):
     async with BrowserSession(
         headless=not getattr(args, "headed", False),
         scope_entries=scope_entries,
+        cookies=cred_cookies or None,
+        extra_headers=cred_headers or None,
         timeout_ms=int(getattr(args, "timeout", 30.0) * 1000),
         har_path=har,
         trace_path=trace,
