@@ -633,9 +633,7 @@ def _run_validate(args) -> int:
             )
         else:
             browser.require_browser()
-            result = asyncio.run(
-                _run_browser_validator(kind, args, scope_entries, shot, cred_headers, cred_cookies)
-            )
+            result = asyncio.run(_run_browser_validator(kind, args, scope_entries, shot, cred_headers, cred_cookies))
     except browser.BrowserError as exc:
         _console.print(f"[yellow]{exc}[/yellow]")
         return EXIT_USAGE

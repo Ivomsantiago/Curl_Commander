@@ -90,7 +90,7 @@ def test_import_cmd_export_positional_url_and_multiple_headers():
         'curl ^"https://target/api/login^" ^\n'
         '  -H ^"Content-Type: application/json^" ^\n'
         '  -H ^"Cookie: a=1^&b=2^" ^\n'
-        "  --data-raw ^\"{^^\\\"u^^\\\":^^\\\"x^^\\\"}^\""
+        '  --data-raw ^"{^^\\"u^^\\":^^\\"x^^\\"}^"'
     )
     cfg = parse_curl(cmd)
     assert cfg.url == "https://target/api/login"
