@@ -246,6 +246,36 @@ curlcmd -w users.txt -w pass.txt --fuzz-mode pitchfork "https://x/FUZZ1:FUZZ2"
 curlcmd --payloads traversal --encode url,url "https://x/file?p=FUZZ"   # url dupla
 ```
 
+### Auth macro (login automático + renovação de sessão)
+
+Uma macro de login (JSON/YAML) autentica sozinha e renova a sessão quando ela
+expira no meio de um fuzz — renovação *single-flight* (uma rajada de 401
+dispara **um** login só). Aplica-se a requisições únicas, `discover` e
+`bounty-scan`. Mutuamente exclusiva com `--auth-bearer/--auth-basic/--auth-apikey`.
+
+```bash
+curlcmd --auth-macro login.json "https://api/me"
+curlcmd discover https://t -w seclists:... --auth-macro login.json
+# apps que devolvem 200 com HTML de "sessão expirada":
+curlcmd --auth-macro login.json --session-die-regex "sess.o expirada" "https://api/me"
+```
+
+```json
+{
+  "backend": "http",
+  "request": {"method": "POST", "url": "https://api/login",
+              "body_type": "json", "body": "{\"user\":\"{{USER}}\",\"pass\":\"{{PASS}}\"}"},
+  "extract": {"token": {"json": "$.access_token"}},
+  "apply": {"header": "Authorization", "template": "Bearer {token}"},
+  "ttl_seconds": 3600,
+  "die": {"status": [401, 403]}
+}
+```
+
+`backend: "browser"` faz o login num Chromium real (extra `[browser]`) para
+casos com JS/CSRF, capturando cookies HttpOnly via Playwright. `{{USER}}`/`{{PASS}}`
+resolvem das variáveis de ambiente. JSONPath rico é opcional (extra `[auth]`).
+
 ### Controle cru / pentest
 
 ```bash
@@ -264,6 +294,18 @@ curlcmd --soap @envelope.xml --soap-action "urn:Login" https://x/svc
 curlcmd --stream https://x/events                        # NDJSON / SSE
 ```
 
+### WebSocket (extra `[ws]`)
+
+O mesmo motor de fuzz (clusterbomb/pitchfork, filtros, anomalia) roda sobre
+WebSocket — só o transporte muda. `connect` abre uma sessão interativa; `fuzz`
+troca o marcador `FUZZ` na mensagem-molde por cada payload, uma resposta por
+envio.
+
+```bash
+curlcmd ws connect wss://alvo/socket
+curlcmd ws fuzz wss://alvo/socket --message '{"cmd":"FUZZ"}' -w payloads.txt --mr '"error"'
+```
+
 ### Histórico
 
 ```bash
@@ -274,6 +316,21 @@ curlcmd export-history -o h.json [--reveal]
 curlcmd delete-history <id>
 curlcmd clear-history
 ```
+
+### Importar coleções (OpenAPI / Postman)
+
+Carrega um spec inteiro no histórico como requisições reenviáveis. Onde o spec
+não traz exemplo, o campo vira um marcador `FUZZ` — pronto para o fuzzer. Cada
+requisição fica etiquetada com sua proveniência (`origin`, ex.: `openapi:api.yaml`).
+
+```bash
+curlcmd import openapi api.yaml --out colecao.json          # OpenAPI 3.0/3.1
+curlcmd import postman collection.json --env env.json       # resolve {{var}} do ambiente
+curlcmd history                                             # veja o que foi importado
+```
+
+> `securitySchemes` (bearer/basic/apiKey) viram `auth_type`/`auth_value`; segredos
+> resolvidos de um ambiente Postman são redigidos antes de tocar o histórico.
 
 ### Manutenção da instalação
 
@@ -416,6 +473,43 @@ curlcmd validate open-redirect "https://t/r?next=§DEST§" --engagement ENG
 ```
 
 `--evidence DIR` salva um screenshot, o DOM, um HAR e um trace do Playwright.
+
+**SSRF cega via out-of-band** (extra `[oob]`): confirma SSRF/XXE/RCE cegos —
+efeitos que não aparecem na resposta HTTP — fazendo o alvo conectar num host que
+você controla (protocolo Interactsh: RSA-2048 + AES-256-CFB). DNS-only e conexão
+HTTP completa são achados distintos.
+
+```bash
+curlcmd validate ssrf "https://t/fetch?url=FUZZ_OOB" --engagement ENG --i-understand-oob
+curlcmd validate ssrf "https://t/fetch" --param url --interactsh-server oob.meu-lab.com --engagement ENG
+```
+
+> Metadados de conexão do alvo trafegam pelo servidor Interactsh. Use
+> `--interactsh-server` com infraestrutura própria em cliente real; o servidor
+> público exige `--i-understand-oob`. A URL de callback **não** é o alvo.
+
+**IDOR / BOLA por correlação de autorização.** A mesma URL responde diferente
+dependendo de **quem** autentica? Para cada `RESOURCE_ID`, a requisição é enviada
+como a identidade A (dono baseline) e como B (atacante) — só a auth muda — e os
+corpos são comparados. B recebendo `200` estruturalmente igual ao de A é
+**confirmado**; `401/403/404` é **bloqueado**; o meio-termo vira **suspeito**
+(exige análise humana). `--fuzz-range` mede quantos recursos B alcança de fato.
+
+```bash
+curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101,102,103 \
+        --auth-a dono.json --auth-b atacante.json --engagement ENG
+curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101 \
+        --auth-a dono.json --auth-b atacante.json --fuzz-range 1000-1050 --engagement ENG
+```
+
+**Relatório de engajamento.** Todo `validate … --engagement ENG` grava o achado
+validado. `report` agrega tudo num HTML único, agrupado por severidade, com
+reprodução (`curl`), evidência e remediação — segredos redigidos, pronto para
+compartilhar.
+
+```bash
+curlcmd report --engagement ENG --out report.html
+```
 
 O **proxy** — um proxy HTTPS interceptador com CA própria, match-and-replace e
 captura no histórico limitada ao escopo:

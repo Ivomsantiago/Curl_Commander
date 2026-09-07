@@ -46,6 +46,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
+    "pytest-timeout",
     "respx",
     "ruff",
     "mypy",
@@ -57,13 +58,23 @@ build-exe = ["pyinstaller>=6.0", "certifi"]
 build-pyz = ["shiv"]
 browser = ["playwright>=1.40"]
 proxy = ["mitmproxy>=10.0"]
+auth = ["jsonpath-ng"]
+oob = ["cryptography"]
+ws = ["websockets>=12.0"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Pin the per-test loop scope so pytest-asyncio doesn't warn/ambiguously reuse
+# a loop across tests (part of the item 0 hang fix).
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+# Fast-fail diagnostic net: any test hanging past this (e.g. a socket recv that
+# never returns) fails with a traceback instead of burning the CI job. This is
+# the safety net, not the fix — the fix is conftest.py + robust test sockets.
+timeout = 60
 
 [tool.ruff]
 line-length = 120
@@ -84,7 +95,7 @@ warn_unused_ignores = false
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*"]
+module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*", "jsonpath_ng.*", "websockets.*"]
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
@@ -102,4 +113,10 @@ omit = [
     "curlcommander/core/validators/clickjacking.py",
     "curlcommander/core/validators/csrf.py",
     "curlcommander/core/proxy.py",
+    # OOB confirmation needs the optional [oob] extra (cryptography); its crypto
+    # path is exercised in the dedicated CI job, not the base gate.
+    "curlcommander/core/oob/interactsh.py",
+    # WebSocket transport needs the optional [ws] extra (websockets); its live
+    # connection path is exercised in the dedicated CI job, not the base gate.
+    "curlcommander/core/ws_client.py",
 ]

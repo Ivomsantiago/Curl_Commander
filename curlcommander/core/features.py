@@ -49,6 +49,18 @@ FEATURES: dict[str, Feature] = {
         modules=["pyperclip"],
         packages=["pyperclip"],
     ),
+    "oob": Feature(
+        name="oob",
+        label="confirmação out-of-band (Interactsh)",
+        modules=["cryptography"],
+        packages=["cryptography"],
+    ),
+    "ws": Feature(
+        name="ws",
+        label="cliente/fuzzing WebSocket",
+        modules=["websockets"],
+        packages=["websockets"],
+    ),
 }
 
 

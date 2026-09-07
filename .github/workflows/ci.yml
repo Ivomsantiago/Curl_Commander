@@ -60,13 +60,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install with browser + proxy extras
+      - name: Install with browser + proxy + oob + ws extras
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,browser,proxy]"
+          pip install -e ".[dev,browser,proxy,oob,ws]"
           python -m playwright install --with-deps chromium
-      - name: Browser validators (real Chromium) + proxy addon tests
-        run: pytest tests/test_browser_xss.py tests/test_validators.py tests/test_proxy.py -q
+      - name: Browser validators (real Chromium) + proxy addon + OOB crypto + WebSocket tests
+        run: pytest tests/test_browser_xss.py tests/test_validators.py tests/test_proxy.py tests/test_oob_interactsh.py tests/test_ws.py -q
 
   audit:
     needs: lint

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from curlcommander.core.auth_macro import AuthMacro
 from curlcommander.core.fuzzer import FuzzFilters, FuzzResult, run_fuzz
 from curlcommander.core.request_model import RequestConfig
 
@@ -52,6 +53,8 @@ async def discover(
     recurse: int = 0,
     verify_ssl: bool = True,
     timeout: float = 30.0,
+    auth: AuthMacro | None = None,
+    env: dict[str, str] | None = None,
 ) -> list[FuzzResult]:
     """Run one or more levels of content discovery over *base_url*."""
     filters = filters or FuzzFilters(filter_codes={404})
@@ -59,7 +62,7 @@ async def discover(
 
     async def one_level(url: str) -> list[FuzzResult]:
         cfg = RequestConfig(method="GET", url=_fuzz_url(url), verify_ssl=verify_ssl, timeout=timeout)
-        return await run_fuzz(cfg, [expanded], filters=filters, concurrency=concurrency, rate=rate)
+        return await run_fuzz(cfg, [expanded], filters=filters, concurrency=concurrency, rate=rate, auth=auth, env=env)
 
     results = await one_level(base_url)
     if recurse > 0:
@@ -76,6 +79,8 @@ async def discover(
                     recurse=recurse - 1,
                     verify_ssl=verify_ssl,
                     timeout=timeout,
+                    auth=auth,
+                    env=env,
                 )
                 # Prefix child payloads with their parent path for readability.
                 for c in child:
@@ -130,10 +135,12 @@ async def category_fuzz(
     rate: float = 0.0,
     verify_ssl: bool = True,
     timeout: float = 30.0,
+    auth: AuthMacro | None = None,
+    env: dict[str, str] | None = None,
 ) -> list[FuzzResult]:
     """Fuzz a category's payloads into a FUZZ marker on *param_url*."""
     cfg = RequestConfig(method="GET", url=_fuzz_url(param_url), verify_ssl=verify_ssl, timeout=timeout)
-    return await run_fuzz(cfg, [payloads], concurrency=concurrency, rate=rate)
+    return await run_fuzz(cfg, [payloads], concurrency=concurrency, rate=rate, auth=auth, env=env)
 
 
 def severity_of(category: str) -> str:

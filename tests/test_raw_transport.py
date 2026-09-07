@@ -25,13 +25,21 @@ class _RecordingServer:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.bind(("127.0.0.1", 0))
         self.sock.listen(1)
+        # A bounded accept() so the worker thread can never block forever if the
+        # client errors before connecting. On Windows closing the listen socket
+        # does NOT unblock a pending blocking accept(), which orphans the daemon
+        # thread and can wedge interpreter shutdown — the timeout prevents that.
+        self.sock.settimeout(5.0)
         self.host, self.port = self.sock.getsockname()
         self.received = b""
         self.thread = threading.Thread(target=self._serve, daemon=True)
         self.thread.start()
 
     def _serve(self):
-        conn, _ = self.sock.accept()
+        try:
+            conn, _ = self.sock.accept()
+        except (TimeoutError, OSError):
+            return  # no client arrived / socket closed — exit cleanly
         with conn:
             conn.settimeout(2.0)
             data = b""
@@ -41,13 +49,20 @@ class _RecordingServer:
                     if not chunk:
                         break
                     data += chunk
-            except TimeoutError:
+            except (TimeoutError, OSError):
                 pass
             self.received = data
-            conn.sendall(_RESPONSE)
+            try:
+                conn.sendall(_RESPONSE)
+            except OSError:
+                pass
 
     def close(self):
-        self.sock.close()
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+        self.thread.join(timeout=6)
 
 
 def test_serialize_preserves_unnormalized_path():

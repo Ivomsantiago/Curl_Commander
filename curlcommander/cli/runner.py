@@ -21,6 +21,7 @@ from curlcommander.core.api_styles import (
     xml_config,
 )
 from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
+from curlcommander.core.auth_macro import AuthMacro, AuthMacroError
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
 from curlcommander.core.discovery import (
@@ -102,6 +103,12 @@ def run_cli(args) -> int:
                 return _run_validate(args)
             case "proxy":
                 return _run_proxy(args, repo)
+            case "import":
+                return _run_import(args, repo)
+            case "ws":
+                return _run_ws(args)
+            case "report":
+                return _run_report(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -110,7 +117,7 @@ def run_cli(args) -> int:
     except RawTransportError as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_NETWORK
-    except (ParseError, CurlParseError, RawRequestError, FileNotFoundError) as exc:
+    except (ParseError, CurlParseError, RawRequestError, FileNotFoundError, AuthMacroError) as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_USAGE
     finally:
@@ -207,6 +214,16 @@ def _run_request(args, repo: HistoryRepo) -> int:
     if getattr(args, "raw_request", None):
         return _execute_raw_request(args, repo)
 
+    # --auth-macro is mutually exclusive with static auth (no silent override).
+    if getattr(args, "auth_macro", None) and (
+        getattr(args, "auth_bearer", None) or getattr(args, "auth_basic", None) or getattr(args, "auth_apikey", None)
+    ):
+        _console.print(
+            "[red]Erro:[/red] --auth-macro é mutuamente exclusivo com "
+            "--auth-bearer/--auth-basic/--auth-apikey. Escolha um."
+        )
+        return EXIT_USAGE
+
     env_vars: dict[str, str] = {}
     imported = _maybe_import(args)
     if imported is not None:
@@ -270,6 +287,7 @@ def _run_request(args, repo: HistoryRepo) -> int:
         report_fmt=getattr(args, "report", None),
         evidence_dir=getattr(args, "evidence", None),
         engagement=getattr(args, "engagement", None),
+        auth=_load_auth_macro(args),
     )
 
 
@@ -510,6 +528,7 @@ def _run_discover(args) -> int:
         return EXIT_USAGE
 
     exts = [e for e in (getattr(args, "extensions", None) or "").split(",") if e] or None
+    auth = _load_auth_macro(args)
     results = asyncio.run(
         discover(
             args.url,
@@ -521,6 +540,8 @@ def _run_discover(args) -> int:
             recurse=getattr(args, "recurse", 0),
             verify_ssl=not getattr(args, "no_verify", False),
             timeout=getattr(args, "timeout", 30.0),
+            auth=auth,
+            env=dict(os.environ),
         )
     )
     _print_fuzz_table(results, f"Discovery — {len(results)} hits")
@@ -544,6 +565,12 @@ def _run_validate(args) -> int:
     shot = str(Path(evidence_dir) / f"{kind}.png") if evidence_dir else None
     if evidence_dir:
         Path(evidence_dir).mkdir(parents=True, exist_ok=True)
+
+    if kind == "ssrf":
+        return _run_ssrf(args, verify, timeout)
+
+    if kind == "idor":
+        return _run_idor(args, verify, timeout)
 
     from curlcommander.core import browser
 
@@ -571,7 +598,377 @@ def _run_validate(args) -> int:
         _console.print(f"[dim]payload:[/dim] {result.payload}")
     if shot and result.evidence.get("screenshot"):
         _console.print(f"[green]screenshot ->[/green] {shot}")
+    _persist_validation(args.engagement, result)
     return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
+
+
+def _persist_idor_finding(args, finding) -> None:
+    """Record a confirmed IDOR as a ValidationResult for the report."""
+    from curlcommander.core.validators.base import CONFIRMED as VR_CONFIRMED
+    from curlcommander.core.validators.base import ValidationResult
+
+    url = args.url.replace("RESOURCE_ID", finding.resource_id)
+    result = ValidationResult(
+        category="idor",
+        verdict=VR_CONFIRMED,
+        url=url,
+        detail=finding.note,
+        payload=f"RESOURCE_ID={finding.resource_id}",
+        evidence={
+            "status_a": finding.status_a,
+            "status_b": finding.status_b,
+            "similarity": round(finding.similarity, 3),
+        },
+    )
+    _persist_validation(getattr(args, "engagement", None), result)
+
+
+def _persist_validation(engagement: str | None, result) -> None:
+    """Store a validated finding so `curlcmd report` can aggregate it later."""
+    if not engagement:
+        return
+    from curlcommander.storage.validation_repo import ValidationRepo
+
+    repo = ValidationRepo(DB_PATH)
+    try:
+        repo.save(engagement, result, datetime.now().isoformat(timespec="seconds"))
+    finally:
+        repo.close()
+
+
+def _run_report(args) -> int:
+    """`curlcmd report --engagement L --out f.html` — aggregate findings to HTML."""
+    from curlcommander.core.report import build_report
+    from curlcommander.storage.validation_repo import ValidationRepo
+
+    repo = ValidationRepo(DB_PATH)
+    try:
+        stored = repo.load(args.engagement)
+    finally:
+        repo.close()
+
+    if not stored:
+        _console.print(
+            f"[yellow]Nenhum achado registrado para o engajamento[/yellow] [bold]{args.engagement}[/bold]. "
+            "Rode `curlcmd validate …` com o mesmo --engagement primeiro."
+        )
+        return EXIT_USAGE
+
+    html_doc = build_report(args.engagement, stored)
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(html_doc, encoding="utf-8", newline="\n")
+    confirmed = sum(1 for s in stored if s.result.verdict == "CONFIRMED")
+    _console.print(
+        f"[green]Relatório gravado em[/green] [bold]{args.out}[/bold] — "
+        f"{confirmed} achado(s) confirmado(s) de {len(stored)} registro(s)."
+    )
+    return EXIT_OK
+
+
+_PUBLIC_INTERACTSH = {"oast.pro", "oast.live", "oast.fun", "interact.sh"}
+
+
+def _run_ssrf(args, verify: bool, timeout: float) -> int:
+    """Blind-SSRF confirmation via Interactsh (out-of-band), with a consent gate."""
+    from curlcommander.core.oob.interactsh import InteractshClient, oob_available
+
+    if not oob_available():
+        from curlcommander.core import features
+
+        _console.print(f"[yellow]{features.missing_message('oob')}[/yellow]")
+        return EXIT_USAGE
+
+    server = getattr(args, "interactsh_server", None) or "oast.pro"
+    # Consent (2.5): metadata of the TARGET's connection transits a third-party
+    # service unless the server is your own. Require explicit acknowledgement.
+    if server in _PUBLIC_INTERACTSH and not getattr(args, "i_understand_oob", False):
+        _console.print(
+            "[red bold]Confirmação necessária.[/red bold] O teste OOB de SSRF usa o servidor "
+            f"[bold]{server}[/bold] (Interactsh público, infraestrutura de terceiros). Metadados de "
+            "conexão do ALVO (IP de origem, requisição crua) vão trafegar por ele.\n"
+            "[dim]A URL de callback gerada NÃO é o alvo — é o host que observa a conexão.[/dim]\n"
+            "Aponte para uma instância própria com [bold]--interactsh-server SEU_HOST[/bold], "
+            "ou confirme com [bold]--i-understand-oob[/bold]."
+        )
+        return EXIT_USAGE
+
+    from curlcommander.core.validators.ssrf import validate_ssrf
+
+    async def run():
+        client = InteractshClient(server=server, verify_ssl=verify)
+        await client.register()
+        _console.print(
+            f"[dim]OOB registrado em {server} (correlation-id {client.correlation_id[:8]}…). "
+            "A URL de callback não é o alvo.[/dim]"
+        )
+        try:
+            return await validate_ssrf(
+                args.url,
+                client,
+                param=getattr(args, "param", None) or "",
+                verify_ssl=verify,
+                timeout=timeout,
+                wait_timeout=getattr(args, "wait", 15.0),
+            )
+        finally:
+            await client.deregister()
+
+    try:
+        result = asyncio.run(run())
+    except Exception as exc:  # noqa: BLE001 - surface a clean message
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_NETWORK
+
+    colour = {"CONFIRMED": "red", "NOT_VULNERABLE": "green", "ERROR": "red"}.get(result.verdict, "white")
+    _console.print(f"[{colour} bold]{result.verdict}[/{colour} bold] ssrf: {result.detail} [dim]({result.url})[/dim]")
+    if result.evidence:
+        _console.print(f"[dim]evidência:[/dim] {result.evidence}")
+    _persist_validation(getattr(args, "engagement", None), result)
+    return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
+
+
+def _run_idor(args, verify: bool, timeout: float) -> int:
+    """`curlcmd validate idor` — authorization correlation across two identities."""
+    from curlcommander.core.idor import BLOCKED, CONFIRMED, check_idor, enumerate_range
+
+    ids = [i.strip() for i in (getattr(args, "ids", None) or "").split(",") if i.strip()]
+    if not ids:
+        _console.print("[red]Refused:[/red] validate idor requires --ids 101,102,103 (RESOURCE_ID values).")
+        return EXIT_USAGE
+    if "RESOURCE_ID" not in args.url:
+        _console.print(
+            "[red]Refused:[/red] a URL precisa conter o marcador [bold]RESOURCE_ID[/bold] (ex.: /api/orders/RESOURCE_ID)."
+        )
+        return EXIT_USAGE
+
+    auth_a = AuthMacro.from_file(args.auth_a) if getattr(args, "auth_a", None) else None
+    auth_b = AuthMacro.from_file(args.auth_b) if getattr(args, "auth_b", None) else None
+    for macro in (auth_a, auth_b):
+        die = getattr(args, "session_die_regex", None)
+        if macro is not None and die:
+            macro.die_regex = die
+
+    template = RequestConfig(method=args.method.upper() if getattr(args, "method", None) else "GET", url=args.url)
+    template.verify_ssl = verify
+    template.timeout = timeout
+    env = dict(os.environ)
+
+    try:
+        findings = asyncio.run(
+            check_idor(template, ids, auth_a, auth_b, threshold=getattr(args, "threshold", 0.85), env=env)
+        )
+    except Exception as exc:  # noqa: BLE001 - surface a clean message
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_NETWORK
+
+    _console.print(f"[bold]validate idor[/bold] {args.url} [dim](engagement {args.engagement})[/dim]")
+    colour = {CONFIRMED: "red", BLOCKED: "green"}
+    confirmed_any = False
+    for f in findings:
+        c = colour.get(f.verdict, "yellow")
+        if f.verdict == CONFIRMED:
+            confirmed_any = True
+            _persist_idor_finding(args, f)
+        _console.print(
+            f"[{c} bold]{f.verdict.upper()}[/{c} bold] id={f.resource_id} "
+            f"A={f.status_a} B={f.status_b} sim={f.similarity:.2f} [dim]{f.note}[/dim]"
+        )
+
+    fuzz_range = getattr(args, "fuzz_range", None)
+    if confirmed_any and fuzz_range and "-" in fuzz_range:
+        try:
+            start_s, end_s = fuzz_range.split("-", 1)
+            start, end = int(start_s), int(end_s)
+        except ValueError:
+            _console.print(f"[yellow]--fuzz-range inválido:[/yellow] {fuzz_range} (esperado INI-FIM)")
+            return EXIT_OK if confirmed_any else EXIT_USAGE
+        _console.print(f"[dim]Enumeração horizontal como identidade B em {start}-{end}…[/dim]")
+        reachable = asyncio.run(enumerate_range(template, start, end, auth=auth_b, env=env))
+        got = [r for r in reachable if r.status_code == 200]
+        _console.print(f"[red]{len(got)}/{len(reachable)}[/red] recursos retornaram 200 para a identidade B.")
+
+    return EXIT_OK
+
+
+def _parse_ws_headers(specs: list[str]) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for spec in specs or []:
+        k, _, v = spec.partition(":")
+        if k.strip():
+            out.append((k.strip(), v.strip()))
+    return out
+
+
+def _run_ws(args) -> int:
+    """`curlcmd ws connect|fuzz` — WebSocket client and fuzzer (extra [ws])."""
+    from curlcommander.core.ws_client import WSError, ws_available
+
+    if not ws_available():
+        from curlcommander.core import features
+
+        _console.print(f"[yellow]{features.missing_message('ws')}[/yellow]")
+        return EXIT_USAGE
+
+    if getattr(args, "scope", None):
+        # A WebSocket URL host must be in scope, same gate as everything else.
+        host = args.url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        scope.enforce(host, scope.load_scope(args.scope))
+
+    headers = _parse_ws_headers(getattr(args, "ws_headers", []) or [])
+    try:
+        if args.ws_cmd == "connect":
+            return asyncio.run(_ws_connect(args.url, headers, getattr(args, "timeout", 10.0)))
+        return _ws_fuzz(args, headers)
+    except WSError as exc:
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_NETWORK
+
+
+async def _ws_connect(url: str, headers: list[tuple[str, str]], timeout: float) -> int:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.patch_stdout import patch_stdout
+
+    from curlcommander.core.ws_client import WSClient
+
+    _console.print(f"[green]conectado[/green] {url} [dim](Ctrl-D/':q' para sair)[/dim]")
+    async with WSClient(url, read_timeout=timeout, extra_headers=headers) as client:
+        session: PromptSession[str] = PromptSession()
+        while True:
+            try:
+                with patch_stdout():
+                    line = await session.prompt_async("ws> ")
+            except (EOFError, KeyboardInterrupt):
+                break
+            if line.strip() in (":q", ":quit"):
+                break
+            if not line:
+                continue
+            result = await client.send_message(line)
+            if result.error:
+                _console.print(f"[red]{result.error}[/red]")
+            else:
+                _console.print(f"[cyan]<-[/cyan] {result.body}")
+    _console.print("[dim]desconectado[/dim]")
+    return EXIT_OK
+
+
+def _ws_fuzz(args, headers: list[tuple[str, str]]) -> int:
+    from curlcommander.core.ws_client import WSClient
+
+    message = args.message
+    if "FUZZ" not in message:
+        _console.print("[red]Error:[/red] a --message precisa conter o marcador FUZZ.")
+        return EXIT_USAGE
+
+    wordlists: list[list[str]] = []
+    for spec in getattr(args, "wordlists", []) or []:
+        try:
+            wordlists.append([ln for ln in Path(spec).read_text(encoding="utf-8").splitlines() if ln])
+        except OSError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+    if not wordlists or any(not wl for wl in wordlists):
+        _console.print("[red]Error:[/red] wordlist vazia ou ilegível.")
+        return EXIT_USAGE
+
+    template = RequestConfig(method="GET", url=args.url, body=message, body_type="raw")
+    filters = FuzzFilters(
+        match_codes=_int_set(getattr(args, "mc", None)),
+        filter_codes=_int_set(getattr(args, "fc", None)),
+        match_size=getattr(args, "ms", None),
+        filter_size=getattr(args, "fs", None),
+        match_regex=getattr(args, "mr", None),
+    )
+
+    async def run() -> list:
+        async with WSClient(args.url, read_timeout=getattr(args, "timeout", 10.0), extra_headers=headers) as client:
+            return await run_fuzz(
+                template,
+                wordlists,
+                mode=getattr(args, "mode", "clusterbomb"),
+                filters=filters,
+                concurrency=getattr(args, "concurrency", 1),
+                rate=getattr(args, "rate", 0.0),
+                transport=client.transport(),
+            )
+
+    results = asyncio.run(run())
+
+    table = Table(title=f"WS fuzz results ({len(results)} shown)")
+    table.add_column("Payload", overflow="fold")
+    table.add_column("Reply", justify="center")
+    table.add_column("Size", justify="right")
+    table.add_column("ms", justify="right")
+    table.add_column("", justify="center")
+    for r in results:
+        reply = "sim" if r.status_code else "—"
+        table.add_row(
+            " / ".join(r.payloads),
+            reply,
+            str(r.size_bytes),
+            f"{r.duration_ms:.0f}",
+            "[bold yellow]*[/bold yellow]" if r.anomaly else "",
+        )
+    _console.print(table)
+    return EXIT_OK
+
+
+def _run_import(args, repo: HistoryRepo) -> int:
+    """`curlcmd import openapi|postman <spec>` — load a collection into history."""
+    from curlcommander.core.importers import SpecImportError, parse_openapi, parse_postman
+    from curlcommander.core.importers.openapi import load_spec
+    from curlcommander.core.importers.postman import load_env
+
+    fmt = args.format
+    try:
+        if fmt == "openapi":
+            configs = parse_openapi(load_spec(args.spec))
+        else:
+            import json as _json
+
+            collection = _json.loads(Path(args.spec).read_text(encoding="utf-8"))
+            env_path = getattr(args, "env", None) or getattr(args, "postman_env", None)
+            env = load_env(env_path) if env_path else {}
+            configs = parse_postman(collection, env)
+    except SpecImportError as exc:
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_USAGE
+    except (FileNotFoundError, ValueError) as exc:
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_USAGE
+
+    if not configs:
+        _console.print("[yellow]Nenhuma requisição encontrada no spec.[/yellow]")
+        return EXIT_OK
+
+    origin = f"{fmt}:{Path(args.spec).name}"
+    for cfg in configs:
+        stored = redact_config(cfg, {})
+        entry = HistoryEntry(
+            id=0,
+            timestamp=datetime.now().isoformat(timespec="seconds"),
+            request=stored,
+            status_code=None,
+            duration_ms=0.0,
+            curl_cmd=build_curl(stored),
+            origin=origin,
+        )
+        repo.save(entry)
+
+    _console.print(
+        f"[green]Importadas {len(configs)} requisição(ões)[/green] de [bold]{args.spec}[/bold] "
+        f"[dim](origin {origin})[/dim]. Veja com [bold]curlcmd history[/bold]."
+    )
+    _console.print("[dim]Marcadores FUZZ indicam campos sem exemplo — prontos para o fuzzer.[/dim]")
+
+    out = getattr(args, "out", None)
+    if out:
+        import json as _json
+
+        payload = [c.to_dict() for c in configs]
+        Path(out).write_text(_json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
+        _console.print(f"[green]Coleção resolvida gravada em[/green] [bold]{out}[/bold]")
+    return EXIT_OK
 
 
 async def _run_browser_validator(kind: str, args, scope_entries, shot):
@@ -673,6 +1070,7 @@ def _run_bounty_scan(args) -> int:
     report = BountyReport(url=args.url)
     categories = [c.strip() for c in (args.categories or "").split(",") if c.strip()]
     param_url = args.url + ("&" if "?" in args.url else "?") + "fuzzcc=FUZZ"
+    auth = _load_auth_macro(args)
 
     for cat in categories:
         try:
@@ -690,6 +1088,8 @@ def _run_bounty_scan(args) -> int:
                 rate=getattr(args, "rate", 0.0),
                 verify_ssl=not getattr(args, "no_verify", False),
                 timeout=getattr(args, "timeout", 30.0),
+                auth=auth,
+                env=dict(os.environ),
             )
         )
         for r in results:
@@ -720,6 +1120,29 @@ def _run_bounty_scan(args) -> int:
         _console.print("[dim]No anomalies flagged. Candidates are leads to investigate, not confirmations.[/dim]")
     _warn_stale_payloads()
     return EXIT_OK
+
+
+async def _send_with_auth(config: RequestConfig, auth: AuthMacro, env: dict[str, str]):
+    """Send a single request through an auth macro: login, apply, retry once."""
+    await auth.ensure(env)
+    token_used = auth.session.token
+    result = await send(auth.apply(config))
+    if auth.should_refresh(result):
+        await auth.refresh(env, seen_token=token_used)
+        result = await send(auth.apply(config))
+    return result
+
+
+def _load_auth_macro(args) -> AuthMacro | None:
+    """Build an AuthMacro from --auth-macro, applying --session-die-regex."""
+    path = getattr(args, "auth_macro", None)
+    if not path:
+        return None
+    macro = AuthMacro.from_file(path)
+    die = getattr(args, "session_die_regex", None)
+    if die:
+        macro.die_regex = die
+    return macro
 
 
 def _warn_stale_payloads() -> None:
@@ -833,6 +1256,7 @@ def _execute_request(
     report_fmt: str | None = None,
     evidence_dir: str | None = None,
     engagement: str | None = None,
+    auth: AuthMacro | None = None,
 ) -> int:
     if not config.verify_ssl:
         _console.print("[yellow]warning: TLS verification disabled (--no-verify)[/yellow]")
@@ -847,6 +1271,8 @@ def _execute_request(
         _console.print("[dim]--- raw request ---[/dim]")
         _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
         result = send_raw_request(raw, host, port, use_tls, config.verify_ssl, config.timeout)
+    elif auth is not None:
+        result = asyncio.run(_send_with_auth(config, auth, dict(os.environ)))
     else:
         result = asyncio.run(send(config))
 

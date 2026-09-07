@@ -130,6 +130,17 @@ def build_request_parser() -> argparse.ArgumentParser:
     parser.add_argument("--auth-basic", metavar="USUÁRIO:SENHA", help="Credenciais Basic auth")
     parser.add_argument("--auth-apikey", metavar="'Cabeçalho: Valor'", help="Auth por API key")
     parser.add_argument(
+        "--auth-macro",
+        metavar="ARQUIVO",
+        help="Macro de login (JSON/YAML) com login automático + renovação de sessão "
+        "(mutuamente exclusivo com --auth-bearer/--auth-basic/--auth-apikey)",
+    )
+    parser.add_argument(
+        "--session-die-regex",
+        metavar="REGEX",
+        help="Regex no corpo que indica sessão expirada (dispara renovação da --auth-macro)",
+    )
+    parser.add_argument(
         "--cookie", action="append", dest="cookies", default=[], metavar="k=v", help="Cookie (repetível)"
     )
     parser.add_argument("--cookie-jar", metavar="CAMINHO", help="Persiste/carrega cookies num arquivo jar")
@@ -279,6 +290,49 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     disc.add_argument("--scope", metavar="PATH")
     disc.add_argument("--no-verify", action="store_true")
     disc.add_argument("--timeout", type=float, default=30.0)
+    disc.add_argument("--auth-macro", metavar="ARQUIVO", help="Macro de login (JSON/YAML)")
+    disc.add_argument("--session-die-regex", metavar="REGEX", help="Regex de sessão expirada")
+
+    # import (OpenAPI / Postman collection -> history + optional JSON out)
+    imp = subparsers.add_parser("import", help="Importa uma coleção (OpenAPI/Postman) para o histórico")
+    imp.add_argument("format", choices=["openapi", "postman"], help="Formato do spec")
+    imp.add_argument("spec", help="Caminho do spec (OpenAPI .yaml/.json ou coleção Postman .json)")
+    imp.add_argument("--out", metavar="ARQUIVO", help="Grava a coleção resolvida como JSON (list de RequestConfig)")
+    imp.add_argument("--env", metavar="ARQUIVO", help="Ambiente Postman (export .json ou objeto plano) p/ {{var}}")
+    imp.add_argument("--postman-env", metavar="ARQUIVO", help="Alias de --env")
+
+    # report (aggregate validated findings for an engagement -> HTML)
+    rep = subparsers.add_parser("report", help="Gera um relatório HTML dos achados de um engajamento")
+    rep.add_argument("--engagement", required=True, metavar="LABEL", help="Engajamento a agregar")
+    rep.add_argument("--out", required=True, metavar="ARQUIVO", help="Caminho do HTML de saída")
+
+    # ws (WebSocket client + fuzzer, extra [ws])
+    ws_p = subparsers.add_parser("ws", help="Cliente e fuzzing de WebSocket (extra [ws])")
+    ws_sub = ws_p.add_subparsers(dest="ws_cmd", required=True)
+
+    ws_connect = ws_sub.add_parser("connect", help="Sessão interativa (envia linhas, mostra respostas)")
+    ws_connect.add_argument("url", help="URL do WebSocket (ws:// ou wss://)")
+    ws_connect.add_argument("--header", action="append", dest="ws_headers", default=[], metavar="'K: V'")
+    ws_connect.add_argument("--scope", metavar="CAMINHO")
+    ws_connect.add_argument("--timeout", type=float, default=10.0, metavar="SEG", help="Espera por resposta")
+
+    ws_fuzz = ws_sub.add_parser("fuzz", help="Fuzz de mensagens com marcador FUZZ")
+    ws_fuzz.add_argument("url", help="URL do WebSocket (ws:// ou wss://)")
+    ws_fuzz.add_argument(
+        "--message", required=True, metavar="TEXTO", help='Mensagem-molde com FUZZ (ex.: \'{"cmd":"FUZZ"}\')'
+    )
+    ws_fuzz.add_argument("-w", "--wordlist", action="append", dest="wordlists", default=[], metavar="ARQUIVO")
+    ws_fuzz.add_argument("--header", action="append", dest="ws_headers", default=[], metavar="'K: V'")
+    ws_fuzz.add_argument("--scope", metavar="CAMINHO")
+    ws_fuzz.add_argument("--mode", choices=["clusterbomb", "pitchfork"], default="clusterbomb")
+    ws_fuzz.add_argument("--concurrency", type=int, default=1, help="Padrão 1 (correlaciona 1 resposta por envio)")
+    ws_fuzz.add_argument("--rate", type=float, default=0.0)
+    ws_fuzz.add_argument("--mc", metavar="LISTA", help="Match por status sintético (101=respondeu)")
+    ws_fuzz.add_argument("--fc", metavar="LISTA")
+    ws_fuzz.add_argument("--ms", type=int, metavar="N", help="Match por tamanho da resposta")
+    ws_fuzz.add_argument("--fs", type=int, metavar="N")
+    ws_fuzz.add_argument("--mr", metavar="REGEX", help="Match por regex no corpo da resposta")
+    ws_fuzz.add_argument("--timeout", type=float, default=10.0, metavar="SEG")
 
     # proxy (intercepting HTTPS proxy with its own CA)
     prox = subparsers.add_parser("proxy", help="Roda um proxy HTTPS interceptador (mitmproxy)")
@@ -298,8 +352,11 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
 
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Valida uma vulnerabilidade (navegador/HTTP)")
-    val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf"])
-    val.add_argument("url", help="URL alvo (use marcadores §PAYLOAD§/§DEST§ onde couber)")
+    val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf", "ssrf", "idor"])
+    val.add_argument(
+        "url",
+        help="URL alvo (marcadores §PAYLOAD§/§DEST§, FUZZ_OOB para SSRF, ou RESOURCE_ID para IDOR)",
+    )
     val.add_argument("--engagement", metavar="LABEL", help="Rótulo de autorização (obrigatório)")
     val.add_argument("--scope", metavar="CAMINHO")
     val.add_argument("--origin", metavar="ORIGEM", default="https://evil.example", help="Origem atacante p/ CORS")
@@ -307,6 +364,31 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     val.add_argument("--evidence", metavar="DIR", help="Salva screenshot/DOM/HAR aqui")
     val.add_argument("--no-verify", action="store_true")
     val.add_argument("--timeout", type=float, default=30.0)
+    # SSRF (out-of-band via Interactsh)
+    val.add_argument("--param", metavar="NOME", help="Parâmetro onde injetar o callback OOB (SSRF)")
+    val.add_argument("--interactsh-server", metavar="HOST", help="Servidor Interactsh (padrão: público oast.pro)")
+    val.add_argument("--wait", type=float, default=15.0, metavar="SEG", help="Janela de espera pela interação OOB")
+    val.add_argument(
+        "--i-understand-oob",
+        action="store_true",
+        help="Confirma que dados de conexão do alvo podem trafegar por um serviço de terceiros (SSRF OOB público)",
+    )
+    # IDOR / BOLA (correlação de autorização entre duas identidades)
+    val.add_argument("--ids", metavar="LISTA", help="IDs de recurso a testar, separados por vírgula (IDOR)")
+    val.add_argument("--auth-a", metavar="ARQUIVO", help="Macro de login da identidade A / dono baseline (IDOR)")
+    val.add_argument("--auth-b", metavar="ARQUIVO", help="Macro de login da identidade B / atacante (IDOR)")
+    val.add_argument(
+        "--threshold",
+        type=float,
+        default=0.85,
+        metavar="0-1",
+        help="Similaridade mínima de corpo (A vs B) para confirmar IDOR (padrão 0.85)",
+    )
+    val.add_argument(
+        "--fuzz-range",
+        metavar="INI-FIM",
+        help="Enumeração horizontal com a identidade B após confirmar (ex.: 1000-1050)",
+    )
 
     # bounty-scan (discover + per-category fuzz, consolidated by severity)
     bounty = subparsers.add_parser("bounty-scan", help="Perfil encadeado de discovery + fuzz de payloads")
@@ -318,6 +400,8 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     bounty.add_argument("--rate", type=float, default=0.0)
     bounty.add_argument("--no-verify", action="store_true")
     bounty.add_argument("--timeout", type=float, default=30.0)
+    bounty.add_argument("--auth-macro", metavar="ARQUIVO", help="Macro de login (JSON/YAML)")
+    bounty.add_argument("--session-die-regex", metavar="REGEX", help="Regex de sessão expirada")
 
     return parser
 
@@ -338,5 +422,8 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "bounty-scan",
         "validate",
         "proxy",
+        "import",
+        "ws",
+        "report",
     }
 )
