@@ -8,6 +8,17 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Adicionado
 
+* **Confirmação de SSRF cega via Interactsh (OOB).** Novo `core/oob/interactsh.py`
+  (extra `oob = [cryptography]`) implementa o protocolo real do
+  projectdiscovery/interactsh: registro com chave RSA-2048, subdomínios de
+  callback por payload (correlacionáveis), polling com decriptação
+  RSA-OAEP(SHA-256) + AES-256-CFB, e deregister. Novo validador
+  `core/validators/ssrf.py` e `curlcmd validate ssrf --url <…FUZZ_OOB…> --param
+  <nome>`: injeta um callback único, dispara a requisição e espera a interação.
+  DNS-only e conexão HTTP completa são achados **distintos** (severidade/detalhe
+  diferentes), não colapsados. Consentimento explícito obrigatório
+  (`--i-understand-oob`) ao usar um servidor público, ou `--interactsh-server`
+  para infraestrutura própria — deixando claro que a URL de callback não é o alvo.
 * **Auth macro reusável (`--auth-macro`).** Novo `core/auth_macro.py`: login
   automatizado (HTTP puro ou navegador Playwright) com extração de token
   (mini-JSONPath, ou `jsonpath-ng` via extra `auth`) e/ou cookies, e renovação

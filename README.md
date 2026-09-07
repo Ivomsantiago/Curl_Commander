@@ -447,6 +447,20 @@ curlcmd validate open-redirect "https://t/r?next=§DEST§" --engagement ENG
 
 `--evidence DIR` salva um screenshot, o DOM, um HAR e um trace do Playwright.
 
+**SSRF cega via out-of-band** (extra `[oob]`): confirma SSRF/XXE/RCE cegos —
+efeitos que não aparecem na resposta HTTP — fazendo o alvo conectar num host que
+você controla (protocolo Interactsh: RSA-2048 + AES-256-CFB). DNS-only e conexão
+HTTP completa são achados distintos.
+
+```bash
+curlcmd validate ssrf "https://t/fetch?url=FUZZ_OOB" --engagement ENG --i-understand-oob
+curlcmd validate ssrf "https://t/fetch" --param url --interactsh-server oob.meu-lab.com --engagement ENG
+```
+
+> Metadados de conexão do alvo trafegam pelo servidor Interactsh. Use
+> `--interactsh-server` com infraestrutura própria em cliente real; o servidor
+> público exige `--i-understand-oob`. A URL de callback **não** é o alvo.
+
 O **proxy** — um proxy HTTPS interceptador com CA própria, match-and-replace e
 captura no histórico limitada ao escopo:
 

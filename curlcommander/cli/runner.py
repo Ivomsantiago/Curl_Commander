@@ -560,6 +560,9 @@ def _run_validate(args) -> int:
     if evidence_dir:
         Path(evidence_dir).mkdir(parents=True, exist_ok=True)
 
+    if kind == "ssrf":
+        return _run_ssrf(args, verify, timeout)
+
     from curlcommander.core import browser
 
     try:
@@ -586,6 +589,67 @@ def _run_validate(args) -> int:
         _console.print(f"[dim]payload:[/dim] {result.payload}")
     if shot and result.evidence.get("screenshot"):
         _console.print(f"[green]screenshot ->[/green] {shot}")
+    return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
+
+
+_PUBLIC_INTERACTSH = {"oast.pro", "oast.live", "oast.fun", "interact.sh"}
+
+
+def _run_ssrf(args, verify: bool, timeout: float) -> int:
+    """Blind-SSRF confirmation via Interactsh (out-of-band), with a consent gate."""
+    from curlcommander.core.oob.interactsh import InteractshClient, oob_available
+
+    if not oob_available():
+        from curlcommander.core import features
+
+        _console.print(f"[yellow]{features.missing_message('oob')}[/yellow]")
+        return EXIT_USAGE
+
+    server = getattr(args, "interactsh_server", None) or "oast.pro"
+    # Consent (2.5): metadata of the TARGET's connection transits a third-party
+    # service unless the server is your own. Require explicit acknowledgement.
+    if server in _PUBLIC_INTERACTSH and not getattr(args, "i_understand_oob", False):
+        _console.print(
+            "[red bold]Confirmação necessária.[/red bold] O teste OOB de SSRF usa o servidor "
+            f"[bold]{server}[/bold] (Interactsh público, infraestrutura de terceiros). Metadados de "
+            "conexão do ALVO (IP de origem, requisição crua) vão trafegar por ele.\n"
+            "[dim]A URL de callback gerada NÃO é o alvo — é o host que observa a conexão.[/dim]\n"
+            "Aponte para uma instância própria com [bold]--interactsh-server SEU_HOST[/bold], "
+            "ou confirme com [bold]--i-understand-oob[/bold]."
+        )
+        return EXIT_USAGE
+
+    from curlcommander.core.validators.ssrf import validate_ssrf
+
+    async def run():
+        client = InteractshClient(server=server, verify_ssl=verify)
+        await client.register()
+        _console.print(
+            f"[dim]OOB registrado em {server} (correlation-id {client.correlation_id[:8]}…). "
+            "A URL de callback não é o alvo.[/dim]"
+        )
+        try:
+            return await validate_ssrf(
+                args.url,
+                client,
+                param=getattr(args, "param", None) or "",
+                verify_ssl=verify,
+                timeout=timeout,
+                wait_timeout=getattr(args, "wait", 15.0),
+            )
+        finally:
+            await client.deregister()
+
+    try:
+        result = asyncio.run(run())
+    except Exception as exc:  # noqa: BLE001 - surface a clean message
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_NETWORK
+
+    colour = {"CONFIRMED": "red", "NOT_VULNERABLE": "green", "ERROR": "red"}.get(result.verdict, "white")
+    _console.print(f"[{colour} bold]{result.verdict}[/{colour} bold] ssrf: {result.detail} [dim]({result.url})[/dim]")
+    if result.evidence:
+        _console.print(f"[dim]evidência:[/dim] {result.evidence}")
     return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
 
 

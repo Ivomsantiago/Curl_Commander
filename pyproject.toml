@@ -59,6 +59,7 @@ build-pyz = ["shiv"]
 browser = ["playwright>=1.40"]
 proxy = ["mitmproxy>=10.0"]
 auth = ["jsonpath-ng"]
+oob = ["cryptography"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"
@@ -111,4 +112,7 @@ omit = [
     "curlcommander/core/validators/clickjacking.py",
     "curlcommander/core/validators/csrf.py",
     "curlcommander/core/proxy.py",
+    # OOB confirmation needs the optional [oob] extra (cryptography); its crypto
+    # path is exercised in the dedicated CI job, not the base gate.
+    "curlcommander/core/oob/interactsh.py",
 ]

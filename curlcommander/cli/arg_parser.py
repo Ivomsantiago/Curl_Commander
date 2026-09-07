@@ -311,8 +311,8 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
 
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Valida uma vulnerabilidade (navegador/HTTP)")
-    val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf"])
-    val.add_argument("url", help="URL alvo (use marcadores §PAYLOAD§/§DEST§ onde couber)")
+    val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf", "ssrf"])
+    val.add_argument("url", help="URL alvo (use marcadores §PAYLOAD§/§DEST§, ou FUZZ_OOB para SSRF)")
     val.add_argument("--engagement", metavar="LABEL", help="Rótulo de autorização (obrigatório)")
     val.add_argument("--scope", metavar="CAMINHO")
     val.add_argument("--origin", metavar="ORIGEM", default="https://evil.example", help="Origem atacante p/ CORS")
@@ -320,6 +320,15 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     val.add_argument("--evidence", metavar="DIR", help="Salva screenshot/DOM/HAR aqui")
     val.add_argument("--no-verify", action="store_true")
     val.add_argument("--timeout", type=float, default=30.0)
+    # SSRF (out-of-band via Interactsh)
+    val.add_argument("--param", metavar="NOME", help="Parâmetro onde injetar o callback OOB (SSRF)")
+    val.add_argument("--interactsh-server", metavar="HOST", help="Servidor Interactsh (padrão: público oast.pro)")
+    val.add_argument("--wait", type=float, default=15.0, metavar="SEG", help="Janela de espera pela interação OOB")
+    val.add_argument(
+        "--i-understand-oob",
+        action="store_true",
+        help="Confirma que dados de conexão do alvo podem trafegar por um serviço de terceiros (SSRF OOB público)",
+    )
 
     # bounty-scan (discover + per-category fuzz, consolidated by severity)
     bounty = subparsers.add_parser("bounty-scan", help="Perfil encadeado de discovery + fuzz de payloads")

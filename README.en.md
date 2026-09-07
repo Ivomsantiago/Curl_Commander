@@ -337,6 +337,20 @@ curlcmd validate open-redirect "https://t/r?next=§DEST§" --engagement ENG
 
 `--evidence DIR` saves a screenshot, the DOM, a HAR and a Playwright trace.
 
+**Blind SSRF via out-of-band** (the `[oob]` extra): confirms blind SSRF/XXE/RCE —
+effects invisible in the HTTP response — by making the target connect to a host
+you control (the Interactsh protocol: RSA-2048 + AES-256-CFB). DNS-only vs a full
+HTTP connection are reported as distinct findings.
+
+```bash
+curlcmd validate ssrf "https://t/fetch?url=FUZZ_OOB" --engagement ENG --i-understand-oob
+curlcmd validate ssrf "https://t/fetch" --param url --interactsh-server oob.my-lab.com --engagement ENG
+```
+
+The target's connection metadata transits the Interactsh server; use
+`--interactsh-server` (your own infra) for real engagements — the public server
+requires `--i-understand-oob`. The callback URL is **not** the target.
+
 **Proxy** — an intercepting HTTPS proxy with its own CA, match-and-replace, and
 scope-gated capture into history:
 
