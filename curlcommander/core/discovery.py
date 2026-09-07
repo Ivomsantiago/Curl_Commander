@@ -79,6 +79,8 @@ async def discover(
                     recurse=recurse - 1,
                     verify_ssl=verify_ssl,
                     timeout=timeout,
+                    auth=auth,
+                    env=env,
                 )
                 # Prefix child payloads with their parent path for readability.
                 for c in child:
