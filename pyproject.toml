@@ -46,6 +46,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
+    "pytest-timeout",
     "respx",
     "ruff",
     "mypy",
@@ -63,7 +64,14 @@ curlcmd = "curlcommander.main:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Pin the per-test loop scope so pytest-asyncio doesn't warn/ambiguously reuse
+# a loop across tests (part of the item 0 hang fix).
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+# Fast-fail diagnostic net: any test hanging past this (e.g. a socket recv that
+# never returns) fails with a traceback instead of burning the CI job. This is
+# the safety net, not the fix — the fix is conftest.py + robust test sockets.
+timeout = 60
 
 [tool.ruff]
 line-length = 120

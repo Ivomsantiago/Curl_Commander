@@ -4,6 +4,20 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Não lançado]
+
+### Corrigido
+
+* **Hang do job `test` no Windows (item 0).** A suíte podia travar num
+  `recv()` de socket que nunca retornava sob o event loop Proactor do Windows.
+  Correção de causa raiz: `tests/conftest.py` fixa o `WindowsSelectorEventLoopPolicy`
+  no Windows; o servidor TCP de teste (`_RecordingServer`) passa a usar `accept()`
+  com timeout e cleanup garantido (fecha o socket e faz `join` da thread), então
+  não sobra thread órfã bloqueada. Além disso, `asyncio_default_fixture_loop_scope`
+  passa a ser `function` e há uma rede de segurança `pytest-timeout` (`timeout=60`)
+  que transforma qualquer hang futuro em falha rápida com traceback, em vez de
+  esgotar o job de CI.
+
 ## [0.3.3] - 2026-09-06 — Correção da demo no PyPI + versão consistente
 
 ### Corrigido
