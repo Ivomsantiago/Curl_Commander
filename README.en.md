@@ -351,6 +351,21 @@ The target's connection metadata transits the Interactsh server; use
 `--interactsh-server` (your own infra) for real engagements — the public server
 requires `--i-understand-oob`. The callback URL is **not** the target.
 
+**IDOR / BOLA via authorization correlation.** Does the same URL respond
+differently depending on **who** authenticates? For each `RESOURCE_ID`, the same
+request is sent as identity A (baseline owner) and as B (attacker) — only the
+auth changes — and the bodies are compared. B getting a `200` structurally equal
+to A's is **confirmed**; `401/403/404` is **blocked**; the middle ground is
+**suspect** (needs a human). `--fuzz-range` measures how many records B can
+actually reach.
+
+```bash
+curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101,102,103 \
+        --auth-a owner.json --auth-b attacker.json --engagement ENG
+curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101 \
+        --auth-a owner.json --auth-b attacker.json --fuzz-range 1000-1050 --engagement ENG
+```
+
 **Proxy** — an intercepting HTTPS proxy with its own CA, match-and-replace, and
 scope-gated capture into history:
 

@@ -311,8 +311,11 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
 
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Valida uma vulnerabilidade (navegador/HTTP)")
-    val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf", "ssrf"])
-    val.add_argument("url", help="URL alvo (use marcadores §PAYLOAD§/§DEST§, ou FUZZ_OOB para SSRF)")
+    val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf", "ssrf", "idor"])
+    val.add_argument(
+        "url",
+        help="URL alvo (marcadores §PAYLOAD§/§DEST§, FUZZ_OOB para SSRF, ou RESOURCE_ID para IDOR)",
+    )
     val.add_argument("--engagement", metavar="LABEL", help="Rótulo de autorização (obrigatório)")
     val.add_argument("--scope", metavar="CAMINHO")
     val.add_argument("--origin", metavar="ORIGEM", default="https://evil.example", help="Origem atacante p/ CORS")
@@ -328,6 +331,22 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
         "--i-understand-oob",
         action="store_true",
         help="Confirma que dados de conexão do alvo podem trafegar por um serviço de terceiros (SSRF OOB público)",
+    )
+    # IDOR / BOLA (correlação de autorização entre duas identidades)
+    val.add_argument("--ids", metavar="LISTA", help="IDs de recurso a testar, separados por vírgula (IDOR)")
+    val.add_argument("--auth-a", metavar="ARQUIVO", help="Macro de login da identidade A / dono baseline (IDOR)")
+    val.add_argument("--auth-b", metavar="ARQUIVO", help="Macro de login da identidade B / atacante (IDOR)")
+    val.add_argument(
+        "--threshold",
+        type=float,
+        default=0.85,
+        metavar="0-1",
+        help="Similaridade mínima de corpo (A vs B) para confirmar IDOR (padrão 0.85)",
+    )
+    val.add_argument(
+        "--fuzz-range",
+        metavar="INI-FIM",
+        help="Enumeração horizontal com a identidade B após confirmar (ex.: 1000-1050)",
     )
 
     # bounty-scan (discover + per-category fuzz, consolidated by severity)

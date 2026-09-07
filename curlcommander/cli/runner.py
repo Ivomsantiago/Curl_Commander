@@ -563,6 +563,9 @@ def _run_validate(args) -> int:
     if kind == "ssrf":
         return _run_ssrf(args, verify, timeout)
 
+    if kind == "idor":
+        return _run_idor(args, verify, timeout)
+
     from curlcommander.core import browser
 
     try:
@@ -651,6 +654,68 @@ def _run_ssrf(args, verify: bool, timeout: float) -> int:
     if result.evidence:
         _console.print(f"[dim]evidência:[/dim] {result.evidence}")
     return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
+
+
+def _run_idor(args, verify: bool, timeout: float) -> int:
+    """`curlcmd validate idor` — authorization correlation across two identities."""
+    from curlcommander.core.idor import BLOCKED, CONFIRMED, check_idor, enumerate_range
+
+    ids = [i.strip() for i in (getattr(args, "ids", None) or "").split(",") if i.strip()]
+    if not ids:
+        _console.print("[red]Refused:[/red] validate idor requires --ids 101,102,103 (RESOURCE_ID values).")
+        return EXIT_USAGE
+    if "RESOURCE_ID" not in args.url:
+        _console.print(
+            "[red]Refused:[/red] a URL precisa conter o marcador [bold]RESOURCE_ID[/bold] (ex.: /api/orders/RESOURCE_ID)."
+        )
+        return EXIT_USAGE
+
+    auth_a = AuthMacro.from_file(args.auth_a) if getattr(args, "auth_a", None) else None
+    auth_b = AuthMacro.from_file(args.auth_b) if getattr(args, "auth_b", None) else None
+    for macro in (auth_a, auth_b):
+        die = getattr(args, "session_die_regex", None)
+        if macro is not None and die:
+            macro.die_regex = die
+
+    template = RequestConfig(method=args.method.upper() if getattr(args, "method", None) else "GET", url=args.url)
+    template.verify_ssl = verify
+    template.timeout = timeout
+    env = dict(os.environ)
+
+    try:
+        findings = asyncio.run(
+            check_idor(template, ids, auth_a, auth_b, threshold=getattr(args, "threshold", 0.85), env=env)
+        )
+    except Exception as exc:  # noqa: BLE001 - surface a clean message
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_NETWORK
+
+    _console.print(f"[bold]validate idor[/bold] {args.url} [dim](engagement {args.engagement})[/dim]")
+    colour = {CONFIRMED: "red", BLOCKED: "green"}
+    confirmed_any = False
+    for f in findings:
+        c = colour.get(f.verdict, "yellow")
+        if f.verdict == CONFIRMED:
+            confirmed_any = True
+        _console.print(
+            f"[{c} bold]{f.verdict.upper()}[/{c} bold] id={f.resource_id} "
+            f"A={f.status_a} B={f.status_b} sim={f.similarity:.2f} [dim]{f.note}[/dim]"
+        )
+
+    fuzz_range = getattr(args, "fuzz_range", None)
+    if confirmed_any and fuzz_range and "-" in fuzz_range:
+        try:
+            start_s, end_s = fuzz_range.split("-", 1)
+            start, end = int(start_s), int(end_s)
+        except ValueError:
+            _console.print(f"[yellow]--fuzz-range inválido:[/yellow] {fuzz_range} (esperado INI-FIM)")
+            return EXIT_OK if confirmed_any else EXIT_USAGE
+        _console.print(f"[dim]Enumeração horizontal como identidade B em {start}-{end}…[/dim]")
+        reachable = asyncio.run(enumerate_range(template, start, end, auth=auth_b, env=env))
+        got = [r for r in reachable if r.status_code == 200]
+        _console.print(f"[red]{len(got)}/{len(reachable)}[/red] recursos retornaram 200 para a identidade B.")
+
+    return EXIT_OK
 
 
 async def _run_browser_validator(kind: str, args, scope_entries, shot):

@@ -8,6 +8,16 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Adicionado
 
+* **IDOR/BOLA por correlação de autorização (`curlcmd validate idor`).** Novo
+  `core/idor.py`: para cada `RESOURCE_ID`, envia a **mesma** requisição como a
+  identidade A (dono baseline) e como B (atacante) — só a autenticação muda — e
+  compara o corpo com `difflib.SequenceMatcher`. B recebendo `200` com corpo
+  estruturalmente igual ao de A ⇒ **confirmado**; B barrado com `401/403/404` ⇒
+  **bloqueado**; meio-termo ⇒ **suspeito** (exige um humano, nunca confirma
+  sozinho). `--fuzz-range INI-FIM` faz enumeração horizontal com a identidade B
+  (reusa o fuzzer) para medir quantos recursos são realmente alcançáveis.
+  `curlcmd validate idor <url com RESOURCE_ID> --ids 101,102,103 --auth-a a.json
+  --auth-b b.json [--threshold 0.85] [--fuzz-range 1000-1050]`.
 * **Confirmação de SSRF cega via Interactsh (OOB).** Novo `core/oob/interactsh.py`
   (extra `oob = [cryptography]`) implementa o protocolo real do
   projectdiscovery/interactsh: registro com chave RSA-2048, subdomínios de

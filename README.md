@@ -461,6 +461,20 @@ curlcmd validate ssrf "https://t/fetch" --param url --interactsh-server oob.meu-
 > `--interactsh-server` com infraestrutura própria em cliente real; o servidor
 > público exige `--i-understand-oob`. A URL de callback **não** é o alvo.
 
+**IDOR / BOLA por correlação de autorização.** A mesma URL responde diferente
+dependendo de **quem** autentica? Para cada `RESOURCE_ID`, a requisição é enviada
+como a identidade A (dono baseline) e como B (atacante) — só a auth muda — e os
+corpos são comparados. B recebendo `200` estruturalmente igual ao de A é
+**confirmado**; `401/403/404` é **bloqueado**; o meio-termo vira **suspeito**
+(exige análise humana). `--fuzz-range` mede quantos recursos B alcança de fato.
+
+```bash
+curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101,102,103 \
+        --auth-a dono.json --auth-b atacante.json --engagement ENG
+curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101 \
+        --auth-a dono.json --auth-b atacante.json --fuzz-range 1000-1050 --engagement ENG
+```
+
 O **proxy** — um proxy HTTPS interceptador com CA própria, match-and-replace e
 captura no histórico limitada ao escopo:
 
