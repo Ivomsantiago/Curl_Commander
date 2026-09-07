@@ -22,6 +22,55 @@ Python 3.11+ · `httpx` · `rich` · `prompt_toolkit` · `textual`.
 
 ---
 
+## Why not just curl?
+
+`curl` is unbeatable for a one-off request or a script. It struggles when the
+work is iterative, stateful, repeatable and investigative — the daily grind of
+API testing and bug bounty hunting. The table below lists only what plain curl
+makes painful or impossible, with the real command/shortcut here (`GUI` = in
+the `curlcmd --gui` interface; `CLI` = on the command line):
+
+| Task | Plain curl | CurlCommander |
+|------|-----------|---------------|
+| Edit one header and resend | rewrite the whole line | **GUI** Repeater tab: edit and resend; resend history in the tab |
+| Fuzzing with positions and filters | separate `ffuf`/`wfuzz` | **GUI** Intruder tab (`§mark§` a position, 4 modes, sortable grid) · **CLI** `-w list "…/FUZZ" --mc 200` |
+| Intercepting the browser | separate Burp/mitmproxy | **GUI** Proxy tab: live capture + "send to Repeater/Intruder" |
+| Analyzing response security | nothing | **GUI** Analyze button (headers/cookies/CORS/errors → candidates) |
+| Remembering what was sent | the shell forgets | **CLI** `curlcmd history` (searchable SQLite), `replay <id>` |
+| Same request across dev/staging/prod | copy-paste | **CLI** `{{VAR}}` + `--env-file` |
+| Testing (assert + exit code + JUnit) | doesn't exist | **CLI** `--assert-status/-header/-jsonpath --report junit` |
+| Not leaking a token into history | ends up in `~/.bash_history` | secret redaction before persisting (default) |
+| Confirming a real XSS | impossible | **CLI** `validate xss … --engagement` (real browser, `[browser]` extra) |
+
+Examples that actually run:
+
+```bash
+# fuzzing with a status filter — plain curl would need ffuf/xargs:
+curlcmd -w words.txt "https://target/FUZZ" --mc 200,301 --fc 404
+
+# test a response and fail the pipeline (exit 3) — curl has no assert:
+curlcmd --assert-status 200 --assert-jsonpath '$.user.id==42' --report junit https://api/x/me
+
+# open the "Burp in a TUI" interface (Repeater/Intruder/Proxy):
+curlcmd --gui
+```
+
+---
+
+## Table of contents
+
+1. [Installation](#1-installation)
+2. [Security](#2-security)
+3. [CLI](#3-cli)
+4. [GUI (TUI)](#4-gui-tui)
+5. [History storage](#5-history-storage)
+6. [Bug bounty — payloads → fuzz → discover](#6-bug-bounty--payloads--fuzz--discover)
+7. [Browser validation & intercepting proxy](#7-browser-validation--intercepting-proxy)
+8. [Development](#8-development)
+9. [Roadmap](#9-roadmap)
+
+---
+
 ## 1. Installation
 
 **One line (recommended):**
@@ -437,3 +486,7 @@ ruff check . && ruff format --check . && mypy && pytest --cov=curlcommander
 - Assisted vuln testing (reflection heuristics, OAST), auth-bypass/IDOR matrices.
 - mTLS (`--cert/--key/--cacert`), `--resolve`, `--unix-socket`, pinning.
 - Postman/collection export, request collections and environments.
+
+## Changelog
+
+See [CHANGELOG.md](https://github.com/Ivomsantiago/Curl_Commander/blob/main/CHANGELOG.md) for every version and the full change history.

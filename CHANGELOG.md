@@ -4,7 +4,19 @@ All notable changes to CurlCommander are documented here. This release turns a
 basic curl generator into a request builder and API/AppSec testing tool. Format
 loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Não lançado]
+## Versionamento
+
+Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
+
+- **X** (primeiro número) sobe a cada mudança de código, novas funções ou
+  melhorias — funcionalidade nova ou reescrita relevante.
+- **Y** (segundo número) sobe para correções gerais (bugs) que não introduzem
+  funcionalidade nova.
+- **Z** (terceiro número) sobe para patches de segurança, correções de
+  pipeline/CI e melhorias de build/empacotamento — sem mudança de
+  funcionalidade ou de API pública.
+
+## [4.0.0] - 2026-09-07 — Auth macro, IDOR, SSRF OOB, WebSocket, importers e relatório HTML
 
 ### Adicionado
 
@@ -88,24 +100,12 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
   passa a ser `function` e há uma rede de segurança `pytest-timeout` (`timeout=60`)
   que transforma qualquer hang futuro em falha rápida com traceback, em vez de
   esgotar o job de CI.
+* **mypy sem o extra `cryptography`.** O job de type-check dev-only rodava sem
+  o extra `oob`; `core/oob/interactsh.py` agora tem os imports de `cryptography`
+  cobertos por `ignore_missing_imports` no `[[tool.mypy.overrides]]`, e o gate de
+  cobertura ≥80% volta a valer no ambiente dev-only.
 
-## [0.3.3] - 2026-09-06 — Correção da demo no PyPI + versão consistente
-
-### Corrigido
-
-* **Imagem da demo quebrada no PyPI.** O README publicado no PyPI referenciava
-  a demo por caminho relativo (`docs/demo.gif`), que o PyPI não resolve (não tem
-  contexto do repositório). Passa a usar a URL absoluta
-  `https://raw.githubusercontent.com/Ivomsantiago/Curl_Commander/main/docs/demo.gif`
-  no README PT-BR e EN, e remove a nota antiga de "espaço reservado".
-* **Versão inconsistente.** `curlcommander.__version__` estava em `0.2.0`
-  enquanto o pacote era `0.3.1`; ambos agora em `0.3.3`, então `curlcmd --version`
-  e o metadado do PyPI batem.
-
-> Observação: como a descrição de uma versão já publicada no PyPI é imutável, a
-> correção da imagem só aparece na página do PyPI após publicar esta nova versão.
-
-## [0.3.2] - 2026-09-06 — Corrige a URL da demo no README
+## [3.0.3] - 2026-09-06 — Corrige a URL da demo no README
 
 ### Corrigido
 
@@ -114,14 +114,14 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
   PyPI — a imagem não aparecia. Agora aponta para a URL absoluta do
   `raw.githubusercontent.com`.
 
-## [0.3.1] - 2026-09-06 — Reorganização do changelog
+## [3.0.2] - 2026-09-06 — Reorganização do changelog
 
 ### Corrigido
 
 * Consolida entradas de changelog duplicadas e seções "não lançado" órfãs em
   um histórico único e coerente, sem mudança de código ou de API pública.
 
-## [0.3.0] - 2026-09-06 — Correções de release e publicação
+## [3.0.1] - 2026-09-06 — Correções de release e publicação
 
 ### Corrigido
 
@@ -129,7 +129,7 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 * Ajustes no fluxo de publicação do pacote no PyPI via GitHub Actions.
 * Correções menores sem alteração da API pública ou introdução de novas funcionalidades.
 
-## [0.2.0] - 2026-09-06 — GUI vira "Burp na TUI"
+## [3.0.0] - 2026-09-06 — GUI vira "Burp na TUI"
 
 ### Adicionado
 
@@ -159,7 +159,7 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 * `send()` preservava `params=[]` e apagava a query embutida na URL; agora a
   query da URL sobrevive.
 
-## [0.1.0] — Arquitetura e funcionalidades principais
+## [2.0.0] — Arquitetura e funcionalidades principais
 
 ### Adicionado
 
@@ -202,6 +202,6 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 * JSON pretty-print automático; `--raw` desabilita.
 * GUI usa uma única conexão SQLite e a fecha.
 
-## [0.0.1] — Initial release
+## [1.0.0] — Initial release
 
 * Geração de curl, envio com httpx, histórico SQLite, wizard, TUI.
