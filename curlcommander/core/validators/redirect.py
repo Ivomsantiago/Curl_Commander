@@ -3,6 +3,11 @@
 Injects an attacker destination into a redirect parameter and follows the
 redirect chain. CONFIRMED when the final URL lands on the attacker's host
 (cross-origin) — proving the redirect target is attacker-controlled.
+
+``headers`` lets the caller attach a session cookie, bearer token or any other
+credential so the redirect endpoint is probed as an authenticated user —
+many redirect handlers only run (or only redirect somewhere sensitive) once
+logged in.
 """
 
 from __future__ import annotations
@@ -11,6 +16,7 @@ from urllib.parse import quote, urlsplit
 
 import httpx
 
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.validators.base import CONFIRMED, NOT_VULNERABLE, ValidationResult
 
 DEFAULT_MARKER = "§DEST§"
@@ -23,6 +29,7 @@ async def validate_open_redirect(
     canary_host: str = CANARY_HOST,
     verify_ssl: bool = True,
     timeout: float = 30.0,
+    headers: HeaderList | None = None,
 ) -> ValidationResult:
     """``url_template`` has ``marker_token`` where the redirect destination goes."""
     if marker_token not in url_template:
@@ -37,7 +44,10 @@ async def validate_open_redirect(
         f"https:/{canary_host}/",
     ]
 
-    async with httpx.AsyncClient(verify=verify_ssl, timeout=timeout, follow_redirects=True) as client:
+    default_headers = headers.items() if headers else None
+    async with httpx.AsyncClient(
+        verify=verify_ssl, timeout=timeout, follow_redirects=True, headers=default_headers
+    ) as client:
         for dest in destinations:
             url = url_template.replace(marker_token, quote(dest, safe=""))
             try:

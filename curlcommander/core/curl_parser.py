@@ -5,10 +5,20 @@ browser DevTools and Burp: tokenise the command (honouring single/double
 quotes, backslash line continuations and Windows ``^`` continuations), then map
 the flags we understand onto a RequestConfig, preserving header/param order and
 duplicates.
+
+Chrome/Firefox's "Copy as cURL (cmd)" export on Windows is a special case: it
+escapes every value for cmd.exe as ``^"value^"``, escapes any literal quote
+nested inside a value (e.g. the ``Sec-CH-UA`` header) as ``^^"``, and escapes
+other cmd metacharacters inline (``^%``, ``^&``, ...). None of that ``^`` is
+real content — see ``_strip_cmd_carets`` — so it is undone before tokenising,
+but only when a conservative signature (``^"`` right after ``curl``/``--url``/
+``-H``/``-b``) confirms this is a cmd export and not a bash command that
+happens to contain a literal ``^`` inside real quotes.
 """
 
 from __future__ import annotations
 
+import re
 import shlex
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
@@ -69,7 +79,36 @@ _BOOL_FLAGS = {
 }
 
 
+# A cmd.exe "Copy as cURL (cmd)" export always wraps the value right after
+# these flags in ^"..."; a bash command containing a stray ^ inside real
+# quotes will not match this, so the check stays conservative.
+_CMD_EXPORT_MARKER = re.compile(r'(?:\bcurl|--url|-H|--header|-b|--cookie)\s+\^"')
+
+
+def _looks_like_cmd_export(command: str) -> bool:
+    return bool(_CMD_EXPORT_MARKER.search(command))
+
+
+def _strip_cmd_carets(command: str) -> str:
+    """Undo cmd.exe caret-escaping from a "Copy as cURL (cmd)" export.
+
+    Order matters: a doubled ``^^"`` (a literal quote nested inside a value,
+    e.g. Sec-CH-UA) is turned into a backslash-escaped quote first, so shlex
+    later treats it as literal content instead of a token boundary. What is
+    left of ``^"`` (the wrapping around the whole value) becomes a plain
+    quote, and any remaining lone ``^`` (``^%``, ``^&``, ...) is dropped —
+    in this format a caret is never real content, purely a cmd.exe escape.
+    """
+    command = command.replace('^^"', '\\"')
+    command = command.replace('^"', '"')
+    return command.replace("^", "")
+
+
 def _normalise(command: str) -> str:
+    if _looks_like_cmd_export(command):
+        command = _strip_cmd_carets(command)
+        # Continuations (` ^\n`) survive the caret strip as bare newlines.
+        return command.replace("\n", " ").strip()
     # Join backslash (POSIX) and caret (Windows) line continuations.
     command = command.replace("\\\n", " ").replace("^\n", " ")
     return command.strip()

@@ -64,6 +64,7 @@ ws = ["websockets>=12.0"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"
+curlcommander = "curlcommander.main:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

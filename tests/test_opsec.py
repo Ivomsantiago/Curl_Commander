@@ -29,6 +29,55 @@ def test_scope_enforce_raises():
         scope.enforce("https://prod.example.com", ["only.allowed.com"])
 
 
+def test_scope_deny_excludes_host_covered_by_wildcard_allow():
+    entries = ["*.karwei.nl", "!horrenconfigurator.karwei.nl"]
+    assert scope.url_in_scope("https://other.karwei.nl", entries)
+    assert not scope.url_in_scope("https://horrenconfigurator.karwei.nl/x", entries)
+
+
+def test_scope_deny_wins_regardless_of_order_in_file():
+    # Deny listed before the allow that would otherwise cover it.
+    entries_deny_first = ["!horrenconfigurator.karwei.nl", "*.karwei.nl"]
+    entries_deny_last = ["*.karwei.nl", "!horrenconfigurator.karwei.nl"]
+    for entries in (entries_deny_first, entries_deny_last):
+        assert not scope.host_in_scope("horrenconfigurator.karwei.nl", entries)
+        assert scope.host_in_scope("other.karwei.nl", entries)
+
+
+def test_scope_deny_wins_even_with_exact_allow_entry():
+    # Even an explicit exact-host allow entry loses to a deny for that host.
+    entries = ["horrenconfigurator.karwei.nl", "!horrenconfigurator.karwei.nl"]
+    assert not scope.host_in_scope("horrenconfigurator.karwei.nl", entries)
+
+
+def test_scope_enforce_deny_message_distinguishes_exclusion():
+    entries = ["*.karwei.nl", "!horrenconfigurator.karwei.nl"]
+    with pytest.raises(scope.ScopeError, match="excluded"):
+        scope.enforce("https://horrenconfigurator.karwei.nl/panel", entries)
+
+
+def test_load_scope_parses_allow_and_deny_lines(tmp_path):
+    scopefile = tmp_path / "scope.txt"
+    scopefile.write_text(
+        "# comment\n*.karwei.nl\n!horrenconfigurator.karwei.nl\n\napi.target.com\n",
+        encoding="utf-8",
+    )
+    entries = scope.load_scope(scopefile)
+    assert entries == ["*.karwei.nl", "!horrenconfigurator.karwei.nl", "api.target.com"]
+    assert scope.url_in_scope("https://other.karwei.nl", entries)
+    assert not scope.url_in_scope("https://horrenconfigurator.karwei.nl", entries)
+    assert scope.url_in_scope("https://api.target.com", entries)
+
+
+def test_scope_without_bang_lines_is_unchanged():
+    """No '!' entries -> deny list empty -> behaviour identical to before."""
+    entries = ["api.target.com", "*.staging.target.com", "10.0.0.0/24"]
+    assert scope.url_in_scope("https://api.target.com/x", entries)
+    assert scope.url_in_scope("https://a.staging.target.com", entries)
+    assert scope.url_in_scope("http://10.0.0.5:8080", entries)
+    assert not scope.url_in_scope("https://evil.com", entries)
+
+
 # --- evidence unit --------------------------------------------------------
 
 

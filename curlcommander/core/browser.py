@@ -70,6 +70,7 @@ class BrowserSession:
         timeout_ms: int = 15000,
         har_path: str | None = None,
         trace_path: str | None = None,
+        extra_headers: HeaderList | None = None,
     ) -> None:
         self.headless = headless
         self.proxy = proxy
@@ -79,9 +80,15 @@ class BrowserSession:
         self.timeout_ms = timeout_ms
         self.har_path = har_path
         self.trace_path = trace_path
+        # extra_headers is context-wide (e.g. Authorization: Bearer ..., a
+        # custom -H) so it reaches every request in the context, including
+        # the iframe/form navigations that clickjacking/CSRF PoCs trigger via
+        # page.set_content() rather than session.goto().
+        self.extra_headers = extra_headers
         self._pw: Any = None
         self._browser: Any = None
         self.context: Any = None
+        self._pending_cookies: list[dict[str, Any]] = []
 
     async def __aenter__(self) -> BrowserSession:
         require_browser()
@@ -100,6 +107,8 @@ class BrowserSession:
             ctx_kwargs["user_agent"] = self.user_agent
         if self.har_path:
             ctx_kwargs["record_har_path"] = self.har_path  # H.5: navigation HAR
+        if self.extra_headers:
+            ctx_kwargs["extra_http_headers"] = dict(self.extra_headers.items())
         self.context = await self._browser.new_context(**ctx_kwargs)
         self.context.set_default_timeout(self.timeout_ms)
         if self.trace_path:
@@ -134,10 +143,16 @@ class BrowserSession:
     async def new_page(self) -> Any:
         return await self.context.new_page()
 
-    async def goto(self, page: Any, url: str) -> Any:
-        """Scope-enforced navigation."""
-        self._enforce(url)
-        if getattr(self, "_pending_cookies", None):
+    async def apply_pending_cookies(self, url: str) -> None:
+        """Flush cookies queued at construction time against ``url``'s host.
+
+        :meth:`goto` calls this on every navigation, but a validator that
+        never navigates via ``goto`` — clickjacking/CSRF build their PoC page
+        with ``page.set_content()`` and let an iframe/form trigger the real
+        request — must call this explicitly before that happens, or the
+        session's ``--cookie`` values never reach the target.
+        """
+        if self._pending_cookies:
             from urllib.parse import urlsplit
 
             host = urlsplit(url).hostname
@@ -148,4 +163,9 @@ class BrowserSession:
                     c["path"] = "/"
                 await self.context.add_cookies(self._pending_cookies)
                 self._pending_cookies = []
+
+    async def goto(self, page: Any, url: str) -> Any:
+        """Scope-enforced navigation."""
+        self._enforce(url)
+        await self.apply_pending_cookies(url)
         return await page.goto(url, wait_until="load")

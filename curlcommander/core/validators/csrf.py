@@ -37,6 +37,10 @@ async def validate_csrf(
     session._enforce(action)
     page = await session.new_page()
     try:
+        # set_content() never goes through goto(), so any session cookies
+        # (--cookie, e.g. an auth session) must be flushed here or the
+        # cross-site form submits unauthenticated.
+        await session.apply_pending_cookies(action)
         await page.set_content(build_poc_html(action, method, fields))
         try:
             await page.wait_for_load_state("networkidle")

@@ -9,6 +9,7 @@ import respx
 
 from curlcommander.core import scope
 from curlcommander.core.browser import BrowserSession, browser_available
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.validators.base import CONFIRMED, NOT_VULNERABLE
 from curlcommander.core.validators.cors import validate_cors
 from curlcommander.core.validators.redirect import validate_open_redirect
@@ -45,6 +46,36 @@ async def test_cors_not_vulnerable():
     assert r.verdict == NOT_VULNERABLE
 
 
+@respx.mock
+async def test_cors_sends_cookie_and_bearer_when_provided():
+    """Anonymous CORS is rarely exploitable; --cookie/--auth-bearer let the
+    probe run against an authenticated endpoint (the impactful case)."""
+    route = respx.get("https://api.t/data").mock(
+        return_value=httpx.Response(
+            200,
+            headers={
+                "access-control-allow-origin": "https://evil.example",
+                "access-control-allow-credentials": "true",
+            },
+        )
+    )
+    creds = HeaderList([("Authorization", "Bearer tok123"), ("Cookie", "session=abc")])
+    r = await validate_cors("https://api.t/data", headers=creds)
+    assert r.verdict == CONFIRMED
+    assert r.evidence["authenticated"] is True
+    sent = route.calls.last.request.headers
+    assert sent["authorization"] == "Bearer tok123"
+    assert sent["cookie"] == "session=abc"
+    assert sent["origin"] == "https://evil.example"
+
+
+@respx.mock
+async def test_cors_evidence_marks_unauthenticated_by_default():
+    respx.get("https://api.t/data").mock(return_value=httpx.Response(200))
+    r = await validate_cors("https://api.t/data")
+    assert r.evidence["authenticated"] is False
+
+
 # --- open redirect (respx) ------------------------------------------------
 
 
@@ -63,6 +94,24 @@ async def test_open_redirect_not_vulnerable():
     respx.get("https://target/r").mock(return_value=httpx.Response(200, text="home"))
     r = await validate_open_redirect("https://target/r?next=§DEST§")
     assert r.verdict == NOT_VULNERABLE
+
+
+@respx.mock
+async def test_open_redirect_forwards_credentials_to_the_target():
+    """Many redirect handlers only run (or only redirect somewhere sensitive)
+    once logged in, so the initial request must carry --cookie/--auth-bearer.
+    httpx correctly strips them again on the cross-origin hop to the canary
+    host, matching what a real victim browser would do."""
+    route = respx.get("https://target/r").mock(
+        return_value=httpx.Response(302, headers={"location": "https://cc-oob.example/"})
+    )
+    respx.get("https://cc-oob.example/").mock(return_value=httpx.Response(200, text="oob"))
+    creds = HeaderList([("Cookie", "session=abc"), ("Authorization", "Bearer tok123")])
+    r = await validate_open_redirect("https://target/r?next=§DEST§", headers=creds)
+    assert r.verdict == CONFIRMED
+    sent = route.calls.last.request.headers
+    assert sent["cookie"] == "session=abc"
+    assert sent["authorization"] == "Bearer tok123"
 
 
 # --- browser validators (real Chromium against a fixture) -----------------
@@ -85,7 +134,9 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        if self.path.startswith("/frameable"):
+        if self.path.startswith("/whoami"):
+            self._send(f"<html><body>auth={self.headers.get('Authorization', '')}</body></html>")
+        elif self.path.startswith("/frameable"):
             self._send("<html><body><h1>bank transfer page</h1></body></html>")
         elif self.path.startswith("/protected"):
             self._send("<html><body>secret</body></html>", {"X-Frame-Options": "DENY"})
@@ -95,7 +146,15 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
         self.rfile.read(length)
-        self._send("<html><body>transfer completed ok</body></html>")
+        if self.path.startswith("/transfer-auth"):
+            # Only takes effect for the session cookie a validated
+            # BrowserSession(cookies=...) is expected to inject.
+            if self.headers.get("Cookie") == "session=valid-token":
+                self._send("<html><body>transfer completed ok</body></html>")
+            else:
+                self._send("<html><body>401 unauthorized</body></html>")
+        else:
+            self._send("<html><body>transfer completed ok</body></html>")
 
 
 @pytest.fixture
@@ -150,6 +209,76 @@ async def test_clickjacking_scope_enforced(server):
             await validate_clickjacking(s, f"{server}/frameable")
 
 
+# --- credentials reach browser validators (H.6) ---------------------------
+#
+# clickjacking/csrf build their PoC with page.set_content() instead of
+# session.goto(), so BrowserSession's cookie flush (normally lazy, on goto)
+# must be triggered explicitly before the framed/submitted target loads —
+# otherwise a --cookie session never reaches an authenticated endpoint.
+
+
+@browser_only
+async def test_clickjacking_flushes_pending_cookies_before_framing(server):
+    """clickjacking builds its PoC with set_content(), which never triggers
+    goto()'s lazy cookie flush — validate_clickjacking must flush explicitly,
+    or a --cookie session never even reaches the browser context before the
+    target is embedded. (Whether Chromium's SameSite policy then forwards
+    that cookie to a cross-origin iframe is the browser's call, not ours —
+    this test only proves BrowserSession did its part.)"""
+    from curlcommander.core.validators.clickjacking import validate_clickjacking
+
+    cookies = HeaderList([("session", "valid-token")])
+    async with BrowserSession(cookies=cookies) as s:
+        assert await s.context.cookies() == []  # nothing flushed until used
+        await validate_clickjacking(s, f"{server}/frameable")
+        applied = await s.context.cookies()
+    assert any(c["name"] == "session" and c["value"] == "valid-token" for c in applied)
+
+
+@browser_only
+async def test_csrf_session_cookie_reaches_authenticated_target(server):
+    from curlcommander.core.validators.csrf import validate_csrf
+
+    cookies = HeaderList([("session", "valid-token")])
+    async with BrowserSession(cookies=cookies) as s:
+        r = await validate_csrf(
+            s,
+            f"{server}/transfer-auth",
+            method="POST",
+            fields={"amount": "1000"},
+            success_contains="transfer completed ok",
+        )
+    assert r.verdict == CONFIRMED
+
+
+@browser_only
+async def test_csrf_without_cookie_is_not_confirmed(server):
+    from curlcommander.core.validators.csrf import validate_csrf
+
+    async with BrowserSession() as s:
+        r = await validate_csrf(
+            s,
+            f"{server}/transfer-auth",
+            method="POST",
+            fields={"amount": "1000"},
+            success_contains="transfer completed ok",
+        )
+    assert r.verdict != CONFIRMED
+
+
+@browser_only
+async def test_browser_session_extra_headers_reach_the_request(server):
+    """--auth-bearer / -H are set on the whole context (extra_http_headers),
+    so every request in it carries them, goto()-driven or not."""
+    extra = HeaderList([("Authorization", "Bearer tok123")])
+    async with BrowserSession(extra_headers=extra) as s:
+        page = await s.new_page()
+        await s.goto(page, f"{server}/whoami")
+        content = await page.content()
+        await page.close()
+    assert "auth=Bearer tok123" in content
+
+
 # --- validate CLI ---------------------------------------------------------
 
 
@@ -201,6 +330,28 @@ def test_cli_validate_requires_engagement():
     from curlcommander.cli import runner
 
     assert runner.run_cli(_vns(engagement=None)) == runner.EXIT_USAGE
+
+
+@respx.mock
+def test_cli_validate_cors_forwards_cookie_bearer_and_header():
+    """`curlcmd validate cors --cookie k=v --auth-bearer TOK -H 'X: Y'` must
+    reach the actual HTTP request — this is what makes an authenticated CORS
+    check possible, the scenario with real impact."""
+    from curlcommander.cli import runner
+
+    route = respx.get("https://api.t/data").mock(return_value=httpx.Response(200))
+    rc = runner.run_cli(
+        _vns(
+            cookies=["session=abc", "theme=dark"],
+            auth_bearer="tok123",
+            headers=["X-Test: yes"],
+        )
+    )
+    assert rc == runner.EXIT_OK
+    sent = route.calls.last.request.headers
+    assert sent["cookie"] == "session=abc; theme=dark"
+    assert sent["authorization"] == "Bearer tok123"
+    assert sent["x-test"] == "yes"
 
 
 def test_cli_validate_browser_absent_degrades(monkeypatch):
