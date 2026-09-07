@@ -60,6 +60,7 @@ browser = ["playwright>=1.40"]
 proxy = ["mitmproxy>=10.0"]
 auth = ["jsonpath-ng"]
 oob = ["cryptography"]
+ws = ["websockets>=12.0"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"
@@ -94,7 +95,7 @@ warn_unused_ignores = false
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*", "jsonpath_ng.*"]
+module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*", "jsonpath_ng.*", "websockets.*"]
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
@@ -115,4 +116,7 @@ omit = [
     # OOB confirmation needs the optional [oob] extra (cryptography); its crypto
     # path is exercised in the dedicated CI job, not the base gate.
     "curlcommander/core/oob/interactsh.py",
+    # WebSocket transport needs the optional [ws] extra (websockets); its live
+    # connection path is exercised in the dedicated CI job, not the base gate.
+    "curlcommander/core/ws_client.py",
 ]

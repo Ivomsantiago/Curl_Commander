@@ -14,7 +14,7 @@ import asyncio
 import re
 import time
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from itertools import product
 
@@ -22,7 +22,14 @@ from curlcommander.core.auth_macro import AuthMacro
 from curlcommander.core.encoders import apply_encoders
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
-from curlcommander.core.request_model import RequestConfig
+from curlcommander.core.request_model import RequestConfig, ResponseResult
+
+# A Transport is anything that turns a (substituted) RequestConfig into a
+# ResponseResult. The HTTP transport is ``http_client.send``; the WebSocket
+# transport (core/ws_client.py) sends the config body as a message and wraps
+# the reply. Keeping this seam means clusterbomb/pitchfork combination,
+# filters, and anomaly flagging live here once and are never duplicated.
+Transport = Callable[[RequestConfig], Awaitable[ResponseResult]]
 
 
 @dataclass
@@ -123,10 +130,12 @@ async def run_fuzz(
     encoders: list[str] | None = None,
     auth: AuthMacro | None = None,
     env: dict[str, str] | None = None,
+    transport: Transport | None = None,
 ) -> list[FuzzResult]:
     filters = filters or FuzzFilters()
     markers = markers_for(len(wordlists))
     regex = re.compile(filters.match_regex) if filters.match_regex else None
+    send_fn: Transport = transport or send
 
     semaphore = asyncio.Semaphore(max(1, concurrency))
     limiter = _RateLimiter(rate)
@@ -142,12 +151,12 @@ async def run_fuzz(
             await limiter.wait()
             send_cfg = auth.apply(cfg) if auth is not None else cfg
             token_used = auth.session.token if auth is not None else ""
-            result = await send(send_cfg)
+            result = await send_fn(send_cfg)
             # Session may have died mid-run: refresh once (single-flight) and
             # retry this request exactly once — a second failure propagates.
             if auth is not None and auth.should_refresh(result):
                 await auth.refresh(env, seen_token=token_used)
-                result = await send(auth.apply(cfg))
+                result = await send_fn(auth.apply(cfg))
         matched = bool(regex.search(result.body)) if regex else False
         return FuzzResult(
             payloads=list(payloads),

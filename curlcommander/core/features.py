@@ -55,6 +55,12 @@ FEATURES: dict[str, Feature] = {
         modules=["cryptography"],
         packages=["cryptography"],
     ),
+    "ws": Feature(
+        name="ws",
+        label="cliente/fuzzing WebSocket",
+        modules=["websockets"],
+        packages=["websockets"],
+    ),
 }
 
 

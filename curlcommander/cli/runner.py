@@ -105,6 +105,8 @@ def run_cli(args) -> int:
                 return _run_proxy(args, repo)
             case "import":
                 return _run_import(args, repo)
+            case "ws":
+                return _run_ws(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -717,6 +719,129 @@ def _run_idor(args, verify: bool, timeout: float) -> int:
         got = [r for r in reachable if r.status_code == 200]
         _console.print(f"[red]{len(got)}/{len(reachable)}[/red] recursos retornaram 200 para a identidade B.")
 
+    return EXIT_OK
+
+
+def _parse_ws_headers(specs: list[str]) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for spec in specs or []:
+        k, _, v = spec.partition(":")
+        if k.strip():
+            out.append((k.strip(), v.strip()))
+    return out
+
+
+def _run_ws(args) -> int:
+    """`curlcmd ws connect|fuzz` — WebSocket client and fuzzer (extra [ws])."""
+    from curlcommander.core.ws_client import WSError, ws_available
+
+    if not ws_available():
+        from curlcommander.core import features
+
+        _console.print(f"[yellow]{features.missing_message('ws')}[/yellow]")
+        return EXIT_USAGE
+
+    if getattr(args, "scope", None):
+        # A WebSocket URL host must be in scope, same gate as everything else.
+        host = args.url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+        scope.enforce(host, scope.load_scope(args.scope))
+
+    headers = _parse_ws_headers(getattr(args, "ws_headers", []) or [])
+    try:
+        if args.ws_cmd == "connect":
+            return asyncio.run(_ws_connect(args.url, headers, getattr(args, "timeout", 10.0)))
+        return _ws_fuzz(args, headers)
+    except WSError as exc:
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_NETWORK
+
+
+async def _ws_connect(url: str, headers: list[tuple[str, str]], timeout: float) -> int:
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.patch_stdout import patch_stdout
+
+    from curlcommander.core.ws_client import WSClient
+
+    _console.print(f"[green]conectado[/green] {url} [dim](Ctrl-D/':q' para sair)[/dim]")
+    async with WSClient(url, read_timeout=timeout, extra_headers=headers) as client:
+        session: PromptSession[str] = PromptSession()
+        while True:
+            try:
+                with patch_stdout():
+                    line = await session.prompt_async("ws> ")
+            except (EOFError, KeyboardInterrupt):
+                break
+            if line.strip() in (":q", ":quit"):
+                break
+            if not line:
+                continue
+            result = await client.send_message(line)
+            if result.error:
+                _console.print(f"[red]{result.error}[/red]")
+            else:
+                _console.print(f"[cyan]<-[/cyan] {result.body}")
+    _console.print("[dim]desconectado[/dim]")
+    return EXIT_OK
+
+
+def _ws_fuzz(args, headers: list[tuple[str, str]]) -> int:
+    from curlcommander.core.ws_client import WSClient
+
+    message = args.message
+    if "FUZZ" not in message:
+        _console.print("[red]Error:[/red] a --message precisa conter o marcador FUZZ.")
+        return EXIT_USAGE
+
+    wordlists: list[list[str]] = []
+    for spec in getattr(args, "wordlists", []) or []:
+        try:
+            wordlists.append([ln for ln in Path(spec).read_text(encoding="utf-8").splitlines() if ln])
+        except OSError as exc:
+            _console.print(f"[red]Error:[/red] {exc}")
+            return EXIT_USAGE
+    if not wordlists or any(not wl for wl in wordlists):
+        _console.print("[red]Error:[/red] wordlist vazia ou ilegível.")
+        return EXIT_USAGE
+
+    template = RequestConfig(method="GET", url=args.url, body=message, body_type="raw")
+    filters = FuzzFilters(
+        match_codes=_int_set(getattr(args, "mc", None)),
+        filter_codes=_int_set(getattr(args, "fc", None)),
+        match_size=getattr(args, "ms", None),
+        filter_size=getattr(args, "fs", None),
+        match_regex=getattr(args, "mr", None),
+    )
+
+    async def run() -> list:
+        async with WSClient(args.url, read_timeout=getattr(args, "timeout", 10.0), extra_headers=headers) as client:
+            return await run_fuzz(
+                template,
+                wordlists,
+                mode=getattr(args, "mode", "clusterbomb"),
+                filters=filters,
+                concurrency=getattr(args, "concurrency", 1),
+                rate=getattr(args, "rate", 0.0),
+                transport=client.transport(),
+            )
+
+    results = asyncio.run(run())
+
+    table = Table(title=f"WS fuzz results ({len(results)} shown)")
+    table.add_column("Payload", overflow="fold")
+    table.add_column("Reply", justify="center")
+    table.add_column("Size", justify="right")
+    table.add_column("ms", justify="right")
+    table.add_column("", justify="center")
+    for r in results:
+        reply = "sim" if r.status_code else "—"
+        table.add_row(
+            " / ".join(r.payloads),
+            reply,
+            str(r.size_bytes),
+            f"{r.duration_ms:.0f}",
+            "[bold yellow]*[/bold yellow]" if r.anomaly else "",
+        )
+    _console.print(table)
     return EXIT_OK
 
 

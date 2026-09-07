@@ -8,6 +8,18 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Adicionado
 
+* **Cliente e fuzzing de WebSocket (`curlcmd ws`, extra `ws`).** O motor de fuzz
+  foi refatorado para um *seam* de transporte (`fuzzer.Transport =
+  Callable[[RequestConfig], Awaitable[ResponseResult]]`, parâmetro
+  `transport=` em `run_fuzz`), de modo que combinação clusterbomb/pitchfork,
+  filtros (`--mc/--fc/--ms/--fs/--mr`) e detecção de anomalia **não** são
+  duplicados — HTTP (`http_client.send`) e WebSocket (`core/ws_client.py`)
+  compartilham o mesmo caminho. `curlcmd ws connect wss://…` abre uma sessão
+  interativa (prompt_toolkit) e `curlcmd ws fuzz wss://… --message '{"cmd":"FUZZ"}'
+  -w payloads.txt` faz fuzz de mensagens (uma resposta por envio, correlacionada
+  via lock). Conexão/sessão que fecha no meio do fuzz vira um resultado de erro
+  limpo, nunca um traceback. Sem dependência nova obrigatória: o `websockets`
+  é carregado sob demanda com mensagem clara de "instale o extra".
 * **Importação de coleções OpenAPI e Postman (`curlcmd import`).** Novos
   `core/importers/openapi.py` e `core/importers/postman.py` (parsers manuais,
   sem dependência nova — OpenAPI YAML usa o `pyyaml` já exigido, Postman é JSON

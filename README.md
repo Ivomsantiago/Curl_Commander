@@ -294,6 +294,18 @@ curlcmd --soap @envelope.xml --soap-action "urn:Login" https://x/svc
 curlcmd --stream https://x/events                        # NDJSON / SSE
 ```
 
+### WebSocket (extra `[ws]`)
+
+O mesmo motor de fuzz (clusterbomb/pitchfork, filtros, anomalia) roda sobre
+WebSocket — só o transporte muda. `connect` abre uma sessão interativa; `fuzz`
+troca o marcador `FUZZ` na mensagem-molde por cada payload, uma resposta por
+envio.
+
+```bash
+curlcmd ws connect wss://alvo/socket
+curlcmd ws fuzz wss://alvo/socket --message '{"cmd":"FUZZ"}' -w payloads.txt --mr '"error"'
+```
+
 ### Histórico
 
 ```bash

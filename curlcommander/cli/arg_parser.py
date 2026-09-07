@@ -301,6 +301,34 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     imp.add_argument("--env", metavar="ARQUIVO", help="Ambiente Postman (export .json ou objeto plano) p/ {{var}}")
     imp.add_argument("--postman-env", metavar="ARQUIVO", help="Alias de --env")
 
+    # ws (WebSocket client + fuzzer, extra [ws])
+    ws_p = subparsers.add_parser("ws", help="Cliente e fuzzing de WebSocket (extra [ws])")
+    ws_sub = ws_p.add_subparsers(dest="ws_cmd", required=True)
+
+    ws_connect = ws_sub.add_parser("connect", help="Sessão interativa (envia linhas, mostra respostas)")
+    ws_connect.add_argument("url", help="URL do WebSocket (ws:// ou wss://)")
+    ws_connect.add_argument("--header", action="append", dest="ws_headers", default=[], metavar="'K: V'")
+    ws_connect.add_argument("--scope", metavar="CAMINHO")
+    ws_connect.add_argument("--timeout", type=float, default=10.0, metavar="SEG", help="Espera por resposta")
+
+    ws_fuzz = ws_sub.add_parser("fuzz", help="Fuzz de mensagens com marcador FUZZ")
+    ws_fuzz.add_argument("url", help="URL do WebSocket (ws:// ou wss://)")
+    ws_fuzz.add_argument(
+        "--message", required=True, metavar="TEXTO", help='Mensagem-molde com FUZZ (ex.: \'{"cmd":"FUZZ"}\')'
+    )
+    ws_fuzz.add_argument("-w", "--wordlist", action="append", dest="wordlists", default=[], metavar="ARQUIVO")
+    ws_fuzz.add_argument("--header", action="append", dest="ws_headers", default=[], metavar="'K: V'")
+    ws_fuzz.add_argument("--scope", metavar="CAMINHO")
+    ws_fuzz.add_argument("--mode", choices=["clusterbomb", "pitchfork"], default="clusterbomb")
+    ws_fuzz.add_argument("--concurrency", type=int, default=1, help="Padrão 1 (correlaciona 1 resposta por envio)")
+    ws_fuzz.add_argument("--rate", type=float, default=0.0)
+    ws_fuzz.add_argument("--mc", metavar="LISTA", help="Match por status sintético (101=respondeu)")
+    ws_fuzz.add_argument("--fc", metavar="LISTA")
+    ws_fuzz.add_argument("--ms", type=int, metavar="N", help="Match por tamanho da resposta")
+    ws_fuzz.add_argument("--fs", type=int, metavar="N")
+    ws_fuzz.add_argument("--mr", metavar="REGEX", help="Match por regex no corpo da resposta")
+    ws_fuzz.add_argument("--timeout", type=float, default=10.0, metavar="SEG")
+
     # proxy (intercepting HTTPS proxy with its own CA)
     prox = subparsers.add_parser("proxy", help="Roda um proxy HTTPS interceptador (mitmproxy)")
     prox.add_argument("--port", type=int, default=8080)
@@ -390,5 +418,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "validate",
         "proxy",
         "import",
+        "ws",
     }
 )
