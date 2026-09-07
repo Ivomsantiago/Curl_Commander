@@ -502,6 +502,15 @@ curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101 \
         --auth-a dono.json --auth-b atacante.json --fuzz-range 1000-1050 --engagement ENG
 ```
 
+**Relatório de engajamento.** Todo `validate … --engagement ENG` grava o achado
+validado. `report` agrega tudo num HTML único, agrupado por severidade, com
+reprodução (`curl`), evidência e remediação — segredos redigidos, pronto para
+compartilhar.
+
+```bash
+curlcmd report --engagement ENG --out report.html
+```
+
 O **proxy** — um proxy HTTPS interceptador com CA própria, match-and-replace e
 captura no histórico limitada ao escopo:
 

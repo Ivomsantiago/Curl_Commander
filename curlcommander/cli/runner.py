@@ -107,6 +107,8 @@ def run_cli(args) -> int:
                 return _run_import(args, repo)
             case "ws":
                 return _run_ws(args)
+            case "report":
+                return _run_report(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -596,7 +598,71 @@ def _run_validate(args) -> int:
         _console.print(f"[dim]payload:[/dim] {result.payload}")
     if shot and result.evidence.get("screenshot"):
         _console.print(f"[green]screenshot ->[/green] {shot}")
+    _persist_validation(args.engagement, result)
     return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
+
+
+def _persist_idor_finding(args, finding) -> None:
+    """Record a confirmed IDOR as a ValidationResult for the report."""
+    from curlcommander.core.validators.base import CONFIRMED as VR_CONFIRMED
+    from curlcommander.core.validators.base import ValidationResult
+
+    url = args.url.replace("RESOURCE_ID", finding.resource_id)
+    result = ValidationResult(
+        category="idor",
+        verdict=VR_CONFIRMED,
+        url=url,
+        detail=finding.note,
+        payload=f"RESOURCE_ID={finding.resource_id}",
+        evidence={
+            "status_a": finding.status_a,
+            "status_b": finding.status_b,
+            "similarity": round(finding.similarity, 3),
+        },
+    )
+    _persist_validation(getattr(args, "engagement", None), result)
+
+
+def _persist_validation(engagement: str | None, result) -> None:
+    """Store a validated finding so `curlcmd report` can aggregate it later."""
+    if not engagement:
+        return
+    from curlcommander.storage.validation_repo import ValidationRepo
+
+    repo = ValidationRepo(DB_PATH)
+    try:
+        repo.save(engagement, result, datetime.now().isoformat(timespec="seconds"))
+    finally:
+        repo.close()
+
+
+def _run_report(args) -> int:
+    """`curlcmd report --engagement L --out f.html` — aggregate findings to HTML."""
+    from curlcommander.core.report import build_report
+    from curlcommander.storage.validation_repo import ValidationRepo
+
+    repo = ValidationRepo(DB_PATH)
+    try:
+        stored = repo.load(args.engagement)
+    finally:
+        repo.close()
+
+    if not stored:
+        _console.print(
+            f"[yellow]Nenhum achado registrado para o engajamento[/yellow] [bold]{args.engagement}[/bold]. "
+            "Rode `curlcmd validate …` com o mesmo --engagement primeiro."
+        )
+        return EXIT_USAGE
+
+    html_doc = build_report(args.engagement, stored)
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.out).write_text(html_doc, encoding="utf-8", newline="\n")
+    confirmed = sum(1 for s in stored if s.result.verdict == "CONFIRMED")
+    _console.print(
+        f"[green]Relatório gravado em[/green] [bold]{args.out}[/bold] — "
+        f"{confirmed} achado(s) confirmado(s) de {len(stored)} registro(s)."
+    )
+    return EXIT_OK
 
 
 _PUBLIC_INTERACTSH = {"oast.pro", "oast.live", "oast.fun", "interact.sh"}
@@ -657,6 +723,7 @@ def _run_ssrf(args, verify: bool, timeout: float) -> int:
     _console.print(f"[{colour} bold]{result.verdict}[/{colour} bold] ssrf: {result.detail} [dim]({result.url})[/dim]")
     if result.evidence:
         _console.print(f"[dim]evidência:[/dim] {result.evidence}")
+    _persist_validation(getattr(args, "engagement", None), result)
     return EXIT_OK if result.verdict != "ERROR" else EXIT_NETWORK
 
 
@@ -701,6 +768,7 @@ def _run_idor(args, verify: bool, timeout: float) -> int:
         c = colour.get(f.verdict, "yellow")
         if f.verdict == CONFIRMED:
             confirmed_any = True
+            _persist_idor_finding(args, f)
         _console.print(
             f"[{c} bold]{f.verdict.upper()}[/{c} bold] id={f.resource_id} "
             f"A={f.status_a} B={f.status_b} sim={f.similarity:.2f} [dim]{f.note}[/dim]"

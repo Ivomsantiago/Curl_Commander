@@ -8,6 +8,18 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Adicionado
 
+* **Relatório de engajamento em HTML (`curlcmd report`).** Novo `core/report.py`
+  agrega os achados validados de um engajamento num único HTML autocontido
+  (CSS embutido, sem recursos externos), agrupado por severidade (reusa
+  `discovery.severity_of`). Cada achado traz descrição, endpoint, severidade,
+  explicação, payload, passos de reprodução (`curl` via `curl_builder`),
+  evidência e remediação. Os `ValidationResult` passam a ser **persistidos** por
+  engajamento numa nova tabela SQLite (`validation_results`, migração
+  `PRAGMA user_version` v3→v4) sempre que `validate` (navegador/SSRF/IDOR) roda
+  com `--engagement`. Tudo derivado do alvo é redigido (`redaction.redact_config`
+  + máscara de segredos na query) e escapado em HTML antes de entrar no
+  documento, então o relatório é seguro para compartilhar.
+  `curlcmd report --engagement <nome> --out report.html`.
 * **Cliente e fuzzing de WebSocket (`curlcmd ws`, extra `ws`).** O motor de fuzz
   foi refatorado para um *seam* de transporte (`fuzzer.Transport =
   Callable[[RequestConfig], Awaitable[ResponseResult]]`, parâmetro

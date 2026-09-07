@@ -21,7 +21,22 @@ CREATE TABLE IF NOT EXISTS history (
 );
 """
 
-CURRENT_VERSION = 3
+# v4: validated findings, grouped for the engagement report (item 6).
+VALIDATION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS validation_results (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         TEXT NOT NULL,
+    engagement TEXT NOT NULL,
+    category   TEXT NOT NULL,
+    verdict    TEXT NOT NULL,
+    url        TEXT NOT NULL,
+    detail     TEXT,
+    payload    TEXT,
+    evidence   TEXT
+);
+"""
+
+CURRENT_VERSION = 4
 
 
 def open_connection(db_path: str | Path) -> sqlite3.Connection:
@@ -55,6 +70,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
     if version < 3:
         # v2 -> v3: provenance tag (e.g. "openapi:spec.yaml", "postman:coll").
         _add_column_if_missing(conn, "history", "origin", "TEXT")
+
+    if version < 4:
+        # v3 -> v4: persisted validated findings for the engagement report.
+        conn.executescript(VALIDATION_SCHEMA)
 
     if version < CURRENT_VERSION:
         conn.execute(f"PRAGMA user_version = {CURRENT_VERSION}")

@@ -301,6 +301,11 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     imp.add_argument("--env", metavar="ARQUIVO", help="Ambiente Postman (export .json ou objeto plano) p/ {{var}}")
     imp.add_argument("--postman-env", metavar="ARQUIVO", help="Alias de --env")
 
+    # report (aggregate validated findings for an engagement -> HTML)
+    rep = subparsers.add_parser("report", help="Gera um relatório HTML dos achados de um engajamento")
+    rep.add_argument("--engagement", required=True, metavar="LABEL", help="Engajamento a agregar")
+    rep.add_argument("--out", required=True, metavar="ARQUIVO", help="Caminho do HTML de saída")
+
     # ws (WebSocket client + fuzzer, extra [ws])
     ws_p = subparsers.add_parser("ws", help="Cliente e fuzzing de WebSocket (extra [ws])")
     ws_sub = ws_p.add_subparsers(dest="ws_cmd", required=True)
@@ -419,5 +424,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "proxy",
         "import",
         "ws",
+        "report",
     }
 )
