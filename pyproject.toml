@@ -58,6 +58,7 @@ build-exe = ["pyinstaller>=6.0", "certifi"]
 build-pyz = ["shiv"]
 browser = ["playwright>=1.40"]
 proxy = ["mitmproxy>=10.0"]
+auth = ["jsonpath-ng"]
 
 [project.scripts]
 curlcmd = "curlcommander.main:main"
@@ -92,7 +93,7 @@ warn_unused_ignores = false
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*"]
+module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*", "jsonpath_ng.*"]
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]

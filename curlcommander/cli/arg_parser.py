@@ -130,6 +130,17 @@ def build_request_parser() -> argparse.ArgumentParser:
     parser.add_argument("--auth-basic", metavar="USUÁRIO:SENHA", help="Credenciais Basic auth")
     parser.add_argument("--auth-apikey", metavar="'Cabeçalho: Valor'", help="Auth por API key")
     parser.add_argument(
+        "--auth-macro",
+        metavar="ARQUIVO",
+        help="Macro de login (JSON/YAML) com login automático + renovação de sessão "
+        "(mutuamente exclusivo com --auth-bearer/--auth-basic/--auth-apikey)",
+    )
+    parser.add_argument(
+        "--session-die-regex",
+        metavar="REGEX",
+        help="Regex no corpo que indica sessão expirada (dispara renovação da --auth-macro)",
+    )
+    parser.add_argument(
         "--cookie", action="append", dest="cookies", default=[], metavar="k=v", help="Cookie (repetível)"
     )
     parser.add_argument("--cookie-jar", metavar="CAMINHO", help="Persiste/carrega cookies num arquivo jar")
@@ -279,6 +290,8 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     disc.add_argument("--scope", metavar="PATH")
     disc.add_argument("--no-verify", action="store_true")
     disc.add_argument("--timeout", type=float, default=30.0)
+    disc.add_argument("--auth-macro", metavar="ARQUIVO", help="Macro de login (JSON/YAML)")
+    disc.add_argument("--session-die-regex", metavar="REGEX", help="Regex de sessão expirada")
 
     # proxy (intercepting HTTPS proxy with its own CA)
     prox = subparsers.add_parser("proxy", help="Roda um proxy HTTPS interceptador (mitmproxy)")
@@ -318,6 +331,8 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     bounty.add_argument("--rate", type=float, default=0.0)
     bounty.add_argument("--no-verify", action="store_true")
     bounty.add_argument("--timeout", type=float, default=30.0)
+    bounty.add_argument("--auth-macro", metavar="ARQUIVO", help="Macro de login (JSON/YAML)")
+    bounty.add_argument("--session-die-regex", metavar="REGEX", help="Regex de sessão expirada")
 
     return parser
 

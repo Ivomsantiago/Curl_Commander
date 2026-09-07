@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from itertools import product
 
+from curlcommander.core.auth_macro import AuthMacro
 from curlcommander.core.encoders import apply_encoders
 from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
@@ -120,6 +121,8 @@ async def run_fuzz(
     concurrency: int = 10,
     rate: float = 0.0,
     encoders: list[str] | None = None,
+    auth: AuthMacro | None = None,
+    env: dict[str, str] | None = None,
 ) -> list[FuzzResult]:
     filters = filters or FuzzFilters()
     markers = markers_for(len(wordlists))
@@ -128,13 +131,23 @@ async def run_fuzz(
     semaphore = asyncio.Semaphore(max(1, concurrency))
     limiter = _RateLimiter(rate)
 
+    if auth is not None:
+        await auth.ensure(env)  # prime the session once before the burst
+
     async def one(payloads: tuple[str, ...]) -> FuzzResult:
         encoded = [apply_encoders(p, encoders) if encoders else p for p in payloads]
         mapping = dict(zip(markers, encoded, strict=False))
         cfg = substitute(base, mapping)
         async with semaphore:
             await limiter.wait()
-            result = await send(cfg)
+            send_cfg = auth.apply(cfg) if auth is not None else cfg
+            token_used = auth.session.token if auth is not None else ""
+            result = await send(send_cfg)
+            # Session may have died mid-run: refresh once (single-flight) and
+            # retry this request exactly once — a second failure propagates.
+            if auth is not None and auth.should_refresh(result):
+                await auth.refresh(env, seen_token=token_used)
+                result = await send(auth.apply(cfg))
         matched = bool(regex.search(result.body)) if regex else False
         return FuzzResult(
             payloads=list(payloads),

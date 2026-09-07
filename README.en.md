@@ -173,6 +173,24 @@ curlcmd -w users.txt -w pass.txt --fuzz-mode pitchfork "https://x/FUZZ1:FUZZ2"
 curlcmd --payloads traversal --encode url,url "https://x/file?p=FUZZ"   # double-url
 ```
 
+### Auth macro (automated login + session refresh)
+
+A login macro (JSON/YAML) authenticates on its own and re-authenticates when the
+session dies mid-fuzz — single-flight refresh (a burst of 401s triggers one
+login). Applies to single requests, `discover` and `bounty-scan`; mutually
+exclusive with `--auth-bearer/--auth-basic/--auth-apikey`.
+
+```bash
+curlcmd --auth-macro login.json "https://api/me"
+curlcmd discover https://t -w seclists:... --auth-macro login.json
+# apps that return 200 with a "session expired" HTML page:
+curlcmd --auth-macro login.json --session-die-regex "session expired" "https://api/me"
+```
+
+The macro extracts a token (mini-JSONPath, or `jsonpath-ng` via the `[auth]`
+extra) and/or cookies; `backend: "browser"` logs in through a real Chromium (the
+`[browser]` extra) for JS/CSRF logins. See the PT-BR README for the JSON shape.
+
 ### Raw / pentest control
 
 ```bash

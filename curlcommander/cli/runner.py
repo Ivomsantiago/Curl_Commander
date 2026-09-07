@@ -21,6 +21,7 @@ from curlcommander.core.api_styles import (
     xml_config,
 )
 from curlcommander.core.assertions import AssertionSpec, format_report, run_assertions
+from curlcommander.core.auth_macro import AuthMacro, AuthMacroError
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.curl_parser import CurlParseError, parse_curl
 from curlcommander.core.discovery import (
@@ -110,7 +111,7 @@ def run_cli(args) -> int:
     except RawTransportError as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_NETWORK
-    except (ParseError, CurlParseError, RawRequestError, FileNotFoundError) as exc:
+    except (ParseError, CurlParseError, RawRequestError, FileNotFoundError, AuthMacroError) as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_USAGE
     finally:
@@ -207,6 +208,16 @@ def _run_request(args, repo: HistoryRepo) -> int:
     if getattr(args, "raw_request", None):
         return _execute_raw_request(args, repo)
 
+    # --auth-macro is mutually exclusive with static auth (no silent override).
+    if getattr(args, "auth_macro", None) and (
+        getattr(args, "auth_bearer", None) or getattr(args, "auth_basic", None) or getattr(args, "auth_apikey", None)
+    ):
+        _console.print(
+            "[red]Erro:[/red] --auth-macro é mutuamente exclusivo com "
+            "--auth-bearer/--auth-basic/--auth-apikey. Escolha um."
+        )
+        return EXIT_USAGE
+
     env_vars: dict[str, str] = {}
     imported = _maybe_import(args)
     if imported is not None:
@@ -270,6 +281,7 @@ def _run_request(args, repo: HistoryRepo) -> int:
         report_fmt=getattr(args, "report", None),
         evidence_dir=getattr(args, "evidence", None),
         engagement=getattr(args, "engagement", None),
+        auth=_load_auth_macro(args),
     )
 
 
@@ -510,6 +522,7 @@ def _run_discover(args) -> int:
         return EXIT_USAGE
 
     exts = [e for e in (getattr(args, "extensions", None) or "").split(",") if e] or None
+    auth = _load_auth_macro(args)
     results = asyncio.run(
         discover(
             args.url,
@@ -521,6 +534,8 @@ def _run_discover(args) -> int:
             recurse=getattr(args, "recurse", 0),
             verify_ssl=not getattr(args, "no_verify", False),
             timeout=getattr(args, "timeout", 30.0),
+            auth=auth,
+            env=dict(os.environ),
         )
     )
     _print_fuzz_table(results, f"Discovery — {len(results)} hits")
@@ -673,6 +688,7 @@ def _run_bounty_scan(args) -> int:
     report = BountyReport(url=args.url)
     categories = [c.strip() for c in (args.categories or "").split(",") if c.strip()]
     param_url = args.url + ("&" if "?" in args.url else "?") + "fuzzcc=FUZZ"
+    auth = _load_auth_macro(args)
 
     for cat in categories:
         try:
@@ -690,6 +706,8 @@ def _run_bounty_scan(args) -> int:
                 rate=getattr(args, "rate", 0.0),
                 verify_ssl=not getattr(args, "no_verify", False),
                 timeout=getattr(args, "timeout", 30.0),
+                auth=auth,
+                env=dict(os.environ),
             )
         )
         for r in results:
@@ -720,6 +738,29 @@ def _run_bounty_scan(args) -> int:
         _console.print("[dim]No anomalies flagged. Candidates are leads to investigate, not confirmations.[/dim]")
     _warn_stale_payloads()
     return EXIT_OK
+
+
+async def _send_with_auth(config: RequestConfig, auth: AuthMacro, env: dict[str, str]):
+    """Send a single request through an auth macro: login, apply, retry once."""
+    await auth.ensure(env)
+    token_used = auth.session.token
+    result = await send(auth.apply(config))
+    if auth.should_refresh(result):
+        await auth.refresh(env, seen_token=token_used)
+        result = await send(auth.apply(config))
+    return result
+
+
+def _load_auth_macro(args) -> AuthMacro | None:
+    """Build an AuthMacro from --auth-macro, applying --session-die-regex."""
+    path = getattr(args, "auth_macro", None)
+    if not path:
+        return None
+    macro = AuthMacro.from_file(path)
+    die = getattr(args, "session_die_regex", None)
+    if die:
+        macro.die_regex = die
+    return macro
 
 
 def _warn_stale_payloads() -> None:
@@ -833,6 +874,7 @@ def _execute_request(
     report_fmt: str | None = None,
     evidence_dir: str | None = None,
     engagement: str | None = None,
+    auth: AuthMacro | None = None,
 ) -> int:
     if not config.verify_ssl:
         _console.print("[yellow]warning: TLS verification disabled (--no-verify)[/yellow]")
@@ -847,6 +889,8 @@ def _execute_request(
         _console.print("[dim]--- raw request ---[/dim]")
         _console.print(raw.decode("latin-1", errors="replace"), highlight=False)
         result = send_raw_request(raw, host, port, use_tls, config.verify_ssl, config.timeout)
+    elif auth is not None:
+        result = asyncio.run(_send_with_auth(config, auth, dict(os.environ)))
     else:
         result = asyncio.run(send(config))
 

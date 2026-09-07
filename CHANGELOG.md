@@ -6,6 +6,19 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Não lançado]
 
+### Adicionado
+
+* **Auth macro reusável (`--auth-macro`).** Novo `core/auth_macro.py`: login
+  automatizado (HTTP puro ou navegador Playwright) com extração de token
+  (mini-JSONPath, ou `jsonpath-ng` via extra `auth`) e/ou cookies, e renovação
+  de sessão *single-flight* — uma rajada de 401 concorrentes dispara **um** só
+  login. A checagem de "sessão morta" é `401/403` por padrão, sobrescrevível com
+  `--session-die-regex` (para apps que devolvem `200` com HTML de "sessão
+  expirada"). Integrado a `run_fuzz`/`discover`/`bounty-scan`/`intruder` e ao
+  envio de requisição única. Mutuamente exclusivo com
+  `--auth-bearer/--auth-basic/--auth-apikey`. `apply()` clona o `RequestConfig`,
+  nunca muta o original.
+
 ### Corrigido
 
 * **Hang do job `test` no Windows (item 0).** A suíte podia travar num

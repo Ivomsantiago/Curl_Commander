@@ -246,6 +246,36 @@ curlcmd -w users.txt -w pass.txt --fuzz-mode pitchfork "https://x/FUZZ1:FUZZ2"
 curlcmd --payloads traversal --encode url,url "https://x/file?p=FUZZ"   # url dupla
 ```
 
+### Auth macro (login automático + renovação de sessão)
+
+Uma macro de login (JSON/YAML) autentica sozinha e renova a sessão quando ela
+expira no meio de um fuzz — renovação *single-flight* (uma rajada de 401
+dispara **um** login só). Aplica-se a requisições únicas, `discover` e
+`bounty-scan`. Mutuamente exclusiva com `--auth-bearer/--auth-basic/--auth-apikey`.
+
+```bash
+curlcmd --auth-macro login.json "https://api/me"
+curlcmd discover https://t -w seclists:... --auth-macro login.json
+# apps que devolvem 200 com HTML de "sessão expirada":
+curlcmd --auth-macro login.json --session-die-regex "sess.o expirada" "https://api/me"
+```
+
+```json
+{
+  "backend": "http",
+  "request": {"method": "POST", "url": "https://api/login",
+              "body_type": "json", "body": "{\"user\":\"{{USER}}\",\"pass\":\"{{PASS}}\"}"},
+  "extract": {"token": {"json": "$.access_token"}},
+  "apply": {"header": "Authorization", "template": "Bearer {token}"},
+  "ttl_seconds": 3600,
+  "die": {"status": [401, 403]}
+}
+```
+
+`backend: "browser"` faz o login num Chromium real (extra `[browser]`) para
+casos com JS/CSRF, capturando cookies HttpOnly via Playwright. `{{USER}}`/`{{PASS}}`
+resolvem das variáveis de ambiente. JSONPath rico é opcional (extra `[auth]`).
+
 ### Controle cru / pentest
 
 ```bash

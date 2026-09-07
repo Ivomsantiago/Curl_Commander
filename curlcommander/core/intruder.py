@@ -17,6 +17,8 @@ sniper/battering-ram are thin variations of how the markers are placed.
 
 from __future__ import annotations
 
+from typing import Any
+
 from curlcommander.core.fuzzer import (
     FuzzFilters,
     FuzzResult,
@@ -50,6 +52,8 @@ async def run_attack(
     concurrency: int = 10,
     rate: float = 0.0,
     encoders: list[str] | None = None,
+    auth: Any = None,
+    env: dict[str, str] | None = None,
 ) -> list[FuzzResult]:
     """Run an Intruder attack. ``base`` already carries the markers (see
     :func:`marker_scheme`); ``originals`` (sniper only) are the pre-marker
@@ -60,7 +64,14 @@ async def run_attack(
     if not wordlists or any(not wl for wl in wordlists):
         raise ValueError("a wordlist is empty or missing")
 
-    common = {"filters": filters, "concurrency": concurrency, "rate": rate, "encoders": encoders}
+    common = {
+        "filters": filters,
+        "concurrency": concurrency,
+        "rate": rate,
+        "encoders": encoders,
+        "auth": auth,
+        "env": env,
+    }
 
     if mode == "pitchfork":
         return await run_fuzz(base, wordlists, "pitchfork", **common)  # type: ignore[arg-type]
