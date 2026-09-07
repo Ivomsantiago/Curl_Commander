@@ -103,6 +103,8 @@ def run_cli(args) -> int:
                 return _run_validate(args)
             case "proxy":
                 return _run_proxy(args, repo)
+            case "import":
+                return _run_import(args, repo)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -715,6 +717,64 @@ def _run_idor(args, verify: bool, timeout: float) -> int:
         got = [r for r in reachable if r.status_code == 200]
         _console.print(f"[red]{len(got)}/{len(reachable)}[/red] recursos retornaram 200 para a identidade B.")
 
+    return EXIT_OK
+
+
+def _run_import(args, repo: HistoryRepo) -> int:
+    """`curlcmd import openapi|postman <spec>` — load a collection into history."""
+    from curlcommander.core.importers import SpecImportError, parse_openapi, parse_postman
+    from curlcommander.core.importers.openapi import load_spec
+    from curlcommander.core.importers.postman import load_env
+
+    fmt = args.format
+    try:
+        if fmt == "openapi":
+            configs = parse_openapi(load_spec(args.spec))
+        else:
+            import json as _json
+
+            collection = _json.loads(Path(args.spec).read_text(encoding="utf-8"))
+            env_path = getattr(args, "env", None) or getattr(args, "postman_env", None)
+            env = load_env(env_path) if env_path else {}
+            configs = parse_postman(collection, env)
+    except SpecImportError as exc:
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_USAGE
+    except (FileNotFoundError, ValueError) as exc:
+        _console.print(f"[red bold]Erro:[/red bold] {exc}")
+        return EXIT_USAGE
+
+    if not configs:
+        _console.print("[yellow]Nenhuma requisição encontrada no spec.[/yellow]")
+        return EXIT_OK
+
+    origin = f"{fmt}:{Path(args.spec).name}"
+    for cfg in configs:
+        stored = redact_config(cfg, {})
+        entry = HistoryEntry(
+            id=0,
+            timestamp=datetime.now().isoformat(timespec="seconds"),
+            request=stored,
+            status_code=None,
+            duration_ms=0.0,
+            curl_cmd=build_curl(stored),
+            origin=origin,
+        )
+        repo.save(entry)
+
+    _console.print(
+        f"[green]Importadas {len(configs)} requisição(ões)[/green] de [bold]{args.spec}[/bold] "
+        f"[dim](origin {origin})[/dim]. Veja com [bold]curlcmd history[/bold]."
+    )
+    _console.print("[dim]Marcadores FUZZ indicam campos sem exemplo — prontos para o fuzzer.[/dim]")
+
+    out = getattr(args, "out", None)
+    if out:
+        import json as _json
+
+        payload = [c.to_dict() for c in configs]
+        Path(out).write_text(_json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
+        _console.print(f"[green]Coleção resolvida gravada em[/green] [bold]{out}[/bold]")
     return EXIT_OK
 
 

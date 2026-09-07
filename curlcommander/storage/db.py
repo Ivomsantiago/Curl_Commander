@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS history (
 );
 """
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 
 def open_connection(db_path: str | Path) -> sqlite3.Connection:
@@ -51,6 +51,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
     if version < 2:
         # v1 -> v2: full request snapshot for lossless replay.
         _add_column_if_missing(conn, "history", "config_json", "TEXT")
+
+    if version < 3:
+        # v2 -> v3: provenance tag (e.g. "openapi:spec.yaml", "postman:coll").
+        _add_column_if_missing(conn, "history", "origin", "TEXT")
 
     if version < CURRENT_VERSION:
         conn.execute(f"PRAGMA user_version = {CURRENT_VERSION}")

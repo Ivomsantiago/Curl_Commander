@@ -305,6 +305,21 @@ curlcmd delete-history <id>
 curlcmd clear-history
 ```
 
+### Importar coleções (OpenAPI / Postman)
+
+Carrega um spec inteiro no histórico como requisições reenviáveis. Onde o spec
+não traz exemplo, o campo vira um marcador `FUZZ` — pronto para o fuzzer. Cada
+requisição fica etiquetada com sua proveniência (`origin`, ex.: `openapi:api.yaml`).
+
+```bash
+curlcmd import openapi api.yaml --out colecao.json          # OpenAPI 3.0/3.1
+curlcmd import postman collection.json --env env.json       # resolve {{var}} do ambiente
+curlcmd history                                             # veja o que foi importado
+```
+
+> `securitySchemes` (bearer/basic/apiKey) viram `auth_type`/`auth_value`; segredos
+> resolvidos de um ambiente Postman são redigidos antes de tocar o histórico.
+
 ### Manutenção da instalação
 
 ```bash

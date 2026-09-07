@@ -101,3 +101,4 @@ class HistoryEntry:
     curl_cmd: str
     response_body: bytes = b""
     response_content_type: str = ""
+    origin: str = ""  # provenance tag (e.g. "openapi:spec.yaml"); "" = live request

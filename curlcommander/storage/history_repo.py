@@ -34,8 +34,8 @@ class HistoryRepo:
             """
             INSERT INTO history
                 (ts, method, url, headers, params, body, body_type, auth_type,
-                 status, duration, curl_cmd, config_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, duration, curl_cmd, config_json, origin)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.timestamp,
@@ -50,6 +50,7 @@ class HistoryRepo:
                 entry.duration_ms,
                 entry.curl_cmd,
                 json.dumps(entry.request.to_dict()),
+                entry.origin,
             ),
         )
         self._conn.commit()
@@ -115,6 +116,7 @@ class HistoryRepo:
                 body_type=row["body_type"] or "none",
                 auth_type=row["auth_type"] or "none",
             )
+        origin = row["origin"] if "origin" in row.keys() else None
         return HistoryEntry(
             id=row["id"],
             timestamp=row["ts"],
@@ -122,4 +124,5 @@ class HistoryRepo:
             status_code=row["status"],
             duration_ms=row["duration"] or 0.0,
             curl_cmd=row["curl_cmd"] or "",
+            origin=origin or "",
         )

@@ -8,6 +8,19 @@ loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Adicionado
 
+* **Importação de coleções OpenAPI e Postman (`curlcmd import`).** Novos
+  `core/importers/openapi.py` e `core/importers/postman.py` (parsers manuais,
+  sem dependência nova — OpenAPI YAML usa o `pyyaml` já exigido, Postman é JSON
+  puro). OpenAPI 3.0/3.1: percorre `paths`, resolve `$ref` de
+  `components.schemas` (com quebra de recursão) e mapeia
+  `components.securitySchemes` para `auth_type/auth_value`; onde não há exemplo,
+  deixa um marcador `FUZZ` pronto para o fuzzer. Postman v2.1: percorre itens
+  aninhados e resolve `{{var}}` contra `--env`/`--postman-env` (export ou objeto
+  plano). Cada requisição é persistida no histórico com uma etiqueta de
+  proveniência (`origin`, ex.: `openapi:spec.yaml`) — nova coluna via migração
+  `PRAGMA user_version` v2→v3. `--out` grava a coleção resolvida como JSON.
+  `curlcmd import openapi spec.yaml --out col.json` /
+  `curlcmd import postman collection.json --env env.json --out col.json`.
 * **IDOR/BOLA por correlação de autorização (`curlcmd validate idor`).** Novo
   `core/idor.py`: para cada `RESOURCE_ID`, envia a **mesma** requisição como a
   identidade A (dono baseline) e como B (atacante) — só a autenticação muda — e

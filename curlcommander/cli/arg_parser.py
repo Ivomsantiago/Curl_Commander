@@ -293,6 +293,14 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     disc.add_argument("--auth-macro", metavar="ARQUIVO", help="Macro de login (JSON/YAML)")
     disc.add_argument("--session-die-regex", metavar="REGEX", help="Regex de sessão expirada")
 
+    # import (OpenAPI / Postman collection -> history + optional JSON out)
+    imp = subparsers.add_parser("import", help="Importa uma coleção (OpenAPI/Postman) para o histórico")
+    imp.add_argument("format", choices=["openapi", "postman"], help="Formato do spec")
+    imp.add_argument("spec", help="Caminho do spec (OpenAPI .yaml/.json ou coleção Postman .json)")
+    imp.add_argument("--out", metavar="ARQUIVO", help="Grava a coleção resolvida como JSON (list de RequestConfig)")
+    imp.add_argument("--env", metavar="ARQUIVO", help="Ambiente Postman (export .json ou objeto plano) p/ {{var}}")
+    imp.add_argument("--postman-env", metavar="ARQUIVO", help="Alias de --env")
+
     # proxy (intercepting HTTPS proxy with its own CA)
     prox = subparsers.add_parser("proxy", help="Roda um proxy HTTPS interceptador (mitmproxy)")
     prox.add_argument("--port", type=int, default=8080)
@@ -381,5 +389,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "bounty-scan",
         "validate",
         "proxy",
+        "import",
     }
 )
