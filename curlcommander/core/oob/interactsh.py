@@ -191,7 +191,8 @@ class InteractshClient:
 
         iv, ct = blob[:16], blob[16:]
         dec = Cipher(algorithms.AES(aes_key), modes.CFB(iv)).decryptor()
-        return (dec.update(ct) + dec.finalize()).decode("utf-8", errors="replace")
+        plaintext: bytes = dec.update(ct) + dec.finalize()
+        return plaintext.decode("utf-8", errors="replace")
 
     # -- transport (injectable for tests) --------------------------------
 

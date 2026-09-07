@@ -95,7 +95,7 @@ warn_unused_ignores = false
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*", "jsonpath_ng.*", "websockets.*"]
+module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*", "jsonpath_ng.*", "websockets.*", "cryptography.*"]
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]

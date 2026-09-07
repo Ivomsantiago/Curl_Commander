@@ -172,6 +172,116 @@ def test_load_env_from_export(tmp_path):
 # --- CLI runner dispatch --------------------------------------------------
 
 
+def test_openapi_security_basic_and_apikey_and_form_body():
+    spec = {
+        "openapi": "3.0.0",
+        "components": {
+            "securitySchemes": {
+                "basic": {"type": "http", "scheme": "basic"},
+                "key": {"type": "apiKey", "in": "header", "name": "X-Key"},
+            }
+        },
+        "paths": {
+            "/basic": {"get": {"security": [{"basic": []}]}},
+            "/key": {"get": {"security": [{"key": []}]}},
+            "/form": {
+                "post": {
+                    "requestBody": {"content": {"application/x-www-form-urlencoded": {"schema": {"type": "object"}}}}
+                }
+            },
+            "/ex": {
+                "post": {
+                    "requestBody": {"content": {"application/json": {"example": {"a": 1}}}},
+                    "parameters": [{"name": "q", "in": "query", "example": "v"}],
+                }
+            },
+        },
+    }
+    by = {c.url.rsplit("/", 1)[-1]: c for c in parse_openapi(spec)}
+    assert by["basic"].auth_type == "basic" and by["basic"].auth_value == "FUZZ:FUZZ"
+    assert by["key"].auth_type == "apikey" and by["key"].auth_value == "X-Key: FUZZ"
+    assert by["form"].body_type == "form" and "FUZZ" in by["form"].body
+    assert json.loads(by["ex"].body) == {"a": 1}  # requestBody example used verbatim
+    assert by["ex"].params.get("q") == "v"  # parameter-level example
+
+
+def test_openapi_scalar_schema_types_and_no_servers():
+    spec = {
+        "openapi": "3.1.0",
+        "paths": {
+            "/x": {
+                "post": {
+                    "requestBody": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "n": {"type": "number"},
+                                        "b": {"type": "boolean"},
+                                        "arr": {"type": "array", "items": {"type": "integer"}},
+                                    },
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    }
+    cfg = parse_openapi(spec)[0]
+    assert cfg.url == "https://HOST/x"  # no servers[] -> placeholder host
+    body = json.loads(cfg.body)
+    assert body == {"n": 0, "b": False, "arr": [0]}
+
+
+def test_openapi_load_spec_yaml(tmp_path):
+    from curlcommander.core.importers.openapi import load_spec
+
+    p = tmp_path / "spec.yaml"
+    p.write_text("openapi: 3.0.0\npaths:\n  /y:\n    get: {}\n", encoding="utf-8")
+    spec = load_spec(str(p))
+    assert parse_openapi(spec)[0].method == "GET"
+
+
+def test_postman_auth_basic_apikey_and_string_url():
+    env = {"u": "alice", "p": "s3cr3t", "kv": "K1"}
+    coll = {
+        "info": {"name": "c"},
+        "item": [
+            {
+                "name": "basic",
+                "request": {
+                    "method": "GET",
+                    "url": "https://x/basic",
+                    "auth": {
+                        "type": "basic",
+                        "basic": [{"key": "username", "value": "{{u}}"}, {"key": "password", "value": "{{p}}"}],
+                    },
+                },
+            },
+            {
+                "name": "apikey",
+                "request": {
+                    "method": "GET",
+                    "url": "https://x/key",
+                    "header": [{"key": "Off", "value": "x", "disabled": True}],
+                    "auth": {
+                        "type": "apikey",
+                        "apikey": [{"key": "key", "value": "X-Api"}, {"key": "value", "value": "{{kv}}"}],
+                    },
+                },
+            },
+        ],
+    }
+    configs = parse_postman(coll, env)
+    basic, apikey = configs
+    assert basic.auth_type == "basic" and basic.auth_value == "alice:s3cr3t"
+    assert basic.url == "https://x/basic"  # plain string url
+    assert apikey.auth_type == "apikey" and apikey.auth_value == "X-Api: K1"
+    assert apikey.headers.get("Off") is None  # disabled header skipped
+
+
 def test_run_import_persists_to_history(tmp_path, capsys):
     spec_path = tmp_path / "spec.json"
     spec_path.write_text(json.dumps(_OPENAPI), encoding="utf-8")
