@@ -68,6 +68,29 @@ def test_build_report_groups_and_redacts():
     assert "Remediação" in doc
 
 
+def test_build_report_renders_evidence_list():
+    stored = [
+        _stored(
+            ValidationResult(
+                "idor", CONFIRMED, "https://api/o/1", detail="d", evidence={"status_a": 200, "status_b": 200}
+            )
+        )
+    ]
+    doc = build_report("ENG", stored)
+    assert "Evidência" in doc
+    assert "status_a" in doc and "status_b" in doc
+
+
+def test_validation_repo_context_manager_and_bad_evidence(tmp_path):
+    db = tmp_path / "h.db"
+    with ValidationRepo(str(db)) as repo:  # __enter__/__exit__
+        repo.save("ENG", ValidationResult("xss", CONFIRMED, "https://t/x"), "2026-09-07T00:00:00")
+        # Corrupt the evidence JSON directly; the loader must degrade to {}.
+        repo._conn.execute("UPDATE validation_results SET evidence = ? WHERE id = 1", ("not json",))
+        repo._conn.commit()
+        assert repo.load("ENG")[0].result.evidence == {}
+
+
 def test_build_report_secret_in_url_is_redacted():
     stored = [_stored(ValidationResult("ssrf", CONFIRMED, "https://t/f?token=SUPERSECRET&x=1"))]
     doc = build_report("ENG", stored)
