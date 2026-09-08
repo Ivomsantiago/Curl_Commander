@@ -16,6 +16,24 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+## [5.0.2] - 2026-09-08 — Corrige de vez o install-smoke-venv-windows
+
+### Corrigido
+
+* **A correção da 5.0.1 (chave `Path` em vez de `PATH`) era necessária mas
+  não suficiente.** Com a run real do runner Windows foi possível confirmar
+  (via log baixado da API do GitHub) que a troca de chave funcionou — o
+  diretório do Python do `actions/setup-python` foi de fato removido do
+  `Path` repassado ao próximo step. O `pipx` continuava resolvível porque
+  vive em `C:\Users\<user>\AppData\Roaming\Python\Python3XX\Scripts`, uma
+  cópia pré-instalada da própria imagem do runner que `Get-Command -All`
+  simplesmente nunca reportou (nem com a exclusão de todos os matches, nem
+  depois do fix de chave) — não era um problema de PATH/GITHUB_ENV, era o
+  `Get-Command -All` não enumerar essa cópia. A etapa `Hide uv/pipx from
+  PATH` agora varre o disco diretamente: para cada diretório do `Path`,
+  testa a existência de `uv`/`pipx` com cada extensão de `$env:PATHEXT`, sem
+  depender de resolução de comando nenhuma.
+
 ## [5.0.1] - 2026-09-08 — Corrige CI do install-smoke-venv-windows
 
 ### Corrigido

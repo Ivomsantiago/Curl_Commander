@@ -186,20 +186,37 @@ jobs:
       - name: Hide uv/pipx from PATH (force the Install-WithVenv branch)
         shell: pwsh
         run: |
-          # -All: uv/pipx can be resolvable from more than one PATH directory
-          # at once on the hosted runner image (e.g. a pipx_bin shim dir AND a
-          # user Scripts dir both containing it) — excluding only the single
-          # highest-precedence match (Get-Command's default) left the other
-          # one reachable and the "Confirm unreachable" step below still
-          # found it.
-          $exclude = @()
-          foreach ($name in 'uv', 'pipx') {
-            $cmds = Get-Command $name -All -ErrorAction SilentlyContinue
-            foreach ($cmd in $cmds) { $exclude += (Split-Path $cmd.Source -Parent) }
+          # Get-Command -All (even with every match's parent dir excluded, and
+          # even after fixing the "Path" vs "PATH" $GITHUB_ENV key) still left
+          # pipx reachable: it only ever reported the copy bundled into the
+          # hostedtoolcache Python that actions/setup-python just activated,
+          # never the runner image's own pre-installed
+          # C:\Users\<user>\AppData\Roaming\Python\Python3XX\Scripts\pipx.exe
+          # — present in the real PATH the whole time (confirmed by dumping
+          # the next step's env), so this isn't a PATH-ordering or
+          # $GITHUB_ENV-propagation issue, it's Get-Command -All itself not
+          # enumerating every match on this runner. Don't trust command
+          # resolution at all: check every PATH directory on disk directly
+          # for a uv/pipx executable and drop only those directories.
+          $targets = 'uv', 'pipx'
+          $exts = ($env:PATHEXT -split ';') + ''
+          $exclude = [System.Collections.Generic.List[string]]::new()
+          foreach ($dir in ($env:Path -split ';')) {
+            $trimmed = $dir.TrimEnd('\')
+            if (-not $trimmed) { continue }
+            foreach ($name in $targets) {
+              foreach ($ext in $exts) {
+                if (Test-Path -LiteralPath (Join-Path $trimmed "$name$ext") -PathType Leaf) {
+                  $exclude.Add($dir)
+                  break
+                }
+              }
+              if ($exclude.Contains($dir)) { break }
+            }
           }
           Write-Host "Excluding from PATH: $exclude"
           if ($exclude.Count -gt 0) {
-            $parts = $env:Path -split ';' | Where-Object { $exclude -notcontains $_ }
+            $parts = $env:Path -split ';' | Where-Object { -not $exclude.Contains($_) }
             $newPath = $parts -join ';'
             Write-Host "New PATH length: $($newPath.Length) chars"
             # Add-Content, not Out-File: Out-File pipes the string through
@@ -207,19 +224,13 @@ jobs:
             # line at the console buffer width (Actions runners often report
             # a narrow non-interactive width) — for a PATH-length value that
             # silently split "PATH=<value>" across two lines and corrupted
-            # $GITHUB_ENV parsing, so the override never took effect (confirmed:
-            # the next step's PATH dump was byte-for-byte the unmodified one).
+            # $GITHUB_ENV parsing, so the override never took effect.
             # Add-Content writes the raw string with no such wrapping.
             #
             # Key must be "Path", not "PATH": the runner's env context is
             # keyed by the exact name inherited from the OS, which on Windows
-            # is "Path". Writing "PATH" to $GITHUB_ENV creates a second,
-            # distinct entry alongside the untouched original "Path" instead
-            # of replacing it, so the next step's process still resolves
-            # commands against the old, unfiltered value — reproduced exactly
-            # by the previous two "fixes" (all-matches exclusion, then
-            # Add-Content) both failing identically on the real Windows
-            # runner, since neither touched this mismatch.
+            # is "Path". Writing "PATH" creates a second, distinct entry
+            # alongside the untouched original instead of replacing it.
             Add-Content -Path $env:GITHUB_ENV -Value "Path=$newPath"
           }
 
