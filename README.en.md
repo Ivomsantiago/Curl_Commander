@@ -125,22 +125,51 @@ and how it was installed. Update with `curlcmd self-update`.
 
 ### Standalone binary (no Python required)
 
-Download `curlcmd` / `curlcmd.exe` for your OS from the
-[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases) page, verify
-the checksum against `SHA256SUMS`, and run it directly:
+Two variants on the
+[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases) page —
+verify the checksum against the published `SHA256SUMS` before running:
+
+- **`curlcmd-<os>`** (lite) — a single file, as always. Browser validators
+  still need Chromium installed separately (see the note below).
+- **`curlcmd-<os>-full.tar.gz`/`.zip`** (item 10.3) — a folder with a real
+  Chromium already bundled; extract and run, browser validators work
+  offline with no extra step. Considerably larger because of that
+  (Chromium alone is 150+ MB).
 
 ```bash
-chmod +x curlcmd && ./curlcmd --version          # Linux/macOS
-.\curlcmd.exe --version                           # Windows (PowerShell)
+chmod +x curlcmd && ./curlcmd --version                     # lite, Linux/macOS
+.\curlcmd.exe --version                                       # lite, Windows (PowerShell)
+
+tar xzf curlcmd-linux-x86_64-full.tar.gz && ./curlcmd/curlcmd --version   # full, Linux/macOS
+# full on Windows: extract the .zip and run curlcmd\curlcmd.exe
 ```
 
-Build it yourself with `pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
-(output in `dist/`). A single-file `curlcmd.pyz` (needs Python, no install) is
-also available via `pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
+Build the lite variant yourself with
+`pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
+(output in `dist/curlcmd`). For the full variant, install Chromium into a
+directory and point `PLAYWRIGHT_BROWSERS_PATH` at it before running
+PyInstaller — the spec detects and bundles it automatically:
+
+```bash
+pip install -e ".[build-exe,browser]"
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/pw-browsers"
+python -m playwright install chromium
+pyinstaller packaging/curlcmd.spec   # output in dist/curlcmd/ (a folder)
+```
+
+A single-file `curlcmd.pyz` (needs Python, no install) is also available via
+`pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
 
 > **Antivirus note.** PyInstaller binaries occasionally trigger a false positive
 > on Windows Defender/SmartScreen. Verify the published SHA256, or install via
 > `pipx`/`pip` instead if your environment blocks unsigned binaries.
+>
+> **Python-dependent features.** The **lite** standalone binary does not
+> include Chromium/mitmproxy/payloads: browser validators, the intercepting
+> proxy, and wordlist downloads need a Python install (or grab the **full**
+> variant above, which already bundles Chromium). mitmproxy and wordlist
+> downloads still need Python either way. Run `curlcmd doctor` for a
+> diagnosis.
 
 ---
 

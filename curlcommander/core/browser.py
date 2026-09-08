@@ -46,6 +46,13 @@ def chromium_executable() -> str | None:
     base = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
     if base:
         patterns = [
+            # Current Playwright ("Chrome for Testing") layout, *-64 suffix.
+            "chromium-*/chrome-linux64/chrome",
+            "chromium-*/chrome-mac64/Chromium.app/Contents/MacOS/Chromium",
+            "chromium-*/chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium",
+            "chromium-*/chrome-win64/chrome.exe",
+            # Older Playwright layout, no -64 suffix — kept for installs that
+            # predate the Chrome-for-Testing switch.
             "chromium-*/chrome-linux/chrome",
             "chromium-*/chrome-mac/Chromium.app/Contents/MacOS/Chromium",
             "chromium-*/chrome-win/chrome.exe",

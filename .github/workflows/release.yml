@@ -17,13 +17,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        variant: [lite, full]
         include:
-          - { os: ubuntu-latest,  asset: curlcmd-linux-x86_64,    exe: curlcmd }
-          - { os: windows-latest, asset: curlcmd-windows-x86_64.exe, exe: curlcmd.exe }
-          - { os: macos-13,       asset: curlcmd-macos-x86_64,    exe: curlcmd }
-          - { os: macos-14,       asset: curlcmd-macos-arm64,     exe: curlcmd }
+          - { os: ubuntu-latest,  os_name: linux-x86_64,   exe: curlcmd }
+          - { os: windows-latest, os_name: windows-x86_64, exe: curlcmd.exe }
+          - { os: macos-13,       os_name: macos-x86_64,   exe: curlcmd }
+          - { os: macos-14,       os_name: macos-arm64,    exe: curlcmd }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,29 +34,79 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[build-exe]"
+
+      # 10.3 "full" variant: bundle a real Chromium into the binary so browser
+      # validators work offline out of the box. Installed BEFORE the PyInstaller
+      # step, never published as a runtime dependency of the pip package —
+      # packaging/curlcmd.spec only bundles it when it finds one at this exact
+      # env-var path, and switches to onedir to do so (see the spec's own
+      # comment for why). The "lite" variant skips this and builds exactly as
+      # it always has: onefile, no Chromium, unchanged asset name/shape.
+      - name: Install bundled Chromium (full variant only)
+        if: matrix.variant == 'full'
+        shell: bash
+        run: |
+          pip install -e ".[browser]"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$GITHUB_WORKSPACE/pw-browsers" >> "$GITHUB_ENV"
+          PLAYWRIGHT_BROWSERS_PATH="$GITHUB_WORKSPACE/pw-browsers" python -m playwright install chromium
+
       - name: Build binary
         run: pyinstaller packaging/curlcmd.spec --distpath dist --workpath build --noconfirm
 
       # F4.2: smoke test the FROZEN binary on every OS to catch broken hidden
-      # imports before publishing.
+      # imports before publishing. The full variant's binary lives in its own
+      # onedir folder (dist/curlcmd/curlcmd); the lite variant is still the
+      # single file PyInstaller has always produced (dist/curlcmd).
       - name: Smoke test (frozen)
         shell: bash
         run: |
-          BIN="dist/${{ matrix.exe }}"
+          if [ "${{ matrix.variant }}" = "full" ]; then
+            BIN="dist/curlcmd/${{ matrix.exe }}"
+          else
+            BIN="dist/${{ matrix.exe }}"
+          fi
+          echo "BIN=$BIN" >> "$GITHUB_ENV"
           "$BIN" --version
           "$BIN" --curl-only -X POST --json '{"a":1}' https://api.example/x
           "$BIN" --dry-run https://api.example/x -H "X-Test: 1"
+
+      # Only the full variant claims a bundled Chromium — actually prove it
+      # launches (not just that the path exists) before ever publishing that
+      # claim to users, per the explicit cross-OS risk called out for this
+      # feature: this is the real gate, not a promise.
+      - name: Smoke test bundled Chromium launches (full variant only)
+        if: matrix.variant == 'full'
+        shell: bash
+        run: |
+          unset PLAYWRIGHT_BROWSERS_PATH CURLCOMMANDER_CHROMIUM
+          "$BIN" doctor | grep -i "Chromium" | grep -qi "pw-browsers\|_internal" || {
+            echo "::error::Bundled Chromium not detected by doctor with env vars unset"; exit 1; }
+          "$BIN" validate clickjacking "https://example.com" --engagement ci-smoke --timeout 20
 
       - name: Stage asset + checksum
         shell: bash
         run: |
           mkdir -p out
-          cp "dist/${{ matrix.exe }}" "out/${{ matrix.asset }}"
-          python -c "import hashlib,sys; p='out/${{ matrix.asset }}'; open(p+'.sha256','w').write(hashlib.sha256(open(p,'rb').read()).hexdigest()+'  ${{ matrix.asset }}\n')"
+          if [ "${{ matrix.variant }}" = "full" ]; then
+            asset="curlcmd-${{ matrix.os_name }}-full"
+            if [ "${{ runner.os }}" = "Windows" ]; then
+              asset="$asset.zip"
+              7z a -tzip "out/$asset" "./dist/curlcmd/*" >/dev/null
+            else
+              asset="$asset.tar.gz"
+              tar -czf "out/$asset" -C dist curlcmd
+            fi
+          else
+            asset="curlcmd-${{ matrix.os_name }}"
+            [ "${{ runner.os }}" = "Windows" ] && asset="$asset.exe"
+            cp "dist/${{ matrix.exe }}" "out/$asset"
+          fi
+          echo "asset=$asset" >> "$GITHUB_ENV"
+          python -c "import hashlib; p='out/$asset'; open(p+'.sha256','w').write(hashlib.sha256(open(p,'rb').read()).hexdigest()+'  $asset\n')"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
+          name: ${{ env.asset }}
           path: out/*
 
   release:

@@ -20,6 +20,31 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Chromium embutido no binário standalone — variante "full" (item 10.3).**
+  `packaging/curlcmd.spec` agora detecta em tempo de build se
+  `PLAYWRIGHT_BROWSERS_PATH` aponta pra um Chromium já instalado
+  (`playwright install chromium`); se sim, embute a árvore inteira no bundle
+  (`pw-browsers/`) e muda automaticamente de onefile para onedir (só nesse
+  caso — sem isso, o build continua onefile, byte a byte como antes: zero
+  mudança para quem não pediu a variante full). Novo
+  `packaging/rthook_chromium.py` aponta `PLAYWRIGHT_BROWSERS_PATH` para a
+  cópia embutida via `sys._MEIPASS` (funciona em onefile e onedir sem
+  distinção). `.github/workflows/release.yml` passa a publicar
+  `curlcmd-<os>` (lite, inalterado) **e** `curlcmd-<os>-full.tar.gz`/`.zip`
+  (Linux/macOS/Windows) por release, com um smoke test dedicado que
+  *realmente lança* o Chromium embutido (não só confere se o caminho existe)
+  antes de publicar — a validação cross-OS que o próprio pedido exigia antes
+  de prometer que funciona em todo lugar.
+  - **Corrigido en passant, achado durante a verificação local desta feature**
+    (`core/browser.py::chromium_executable`): o Playwright atual baixa
+    "Chrome for Testing" em `chrome-linux64`/`chrome-win64`/`chrome-mac64`
+    (sufixo `-64`), não mais `chrome-linux`/`chrome-win`/`chrome-mac`. O glob
+    só reconhecia o layout antigo — `curlcmd doctor` reportava Chromium como
+    ausente mesmo com um Chromium funcional instalado (o `validate` ainda
+    funcionava por baixo, via a resolução própria do Playwright a partir de
+    `PLAYWRIGHT_BROWSERS_PATH`, mascarando o diagnóstico incorreto). Agora
+    tenta os dois layouts. Sem teste anterior cobrindo esta função —
+    `tests/test_browser_chromium_path.py` (novo) cobre ambos os layouts.
 * **Wordlist essencial embutida para `discover` (item 10.2).** Rodar
   `discover` sem `-w`/`--payloads` antes de qualquer `payloads sync` recusava
   o comando; agora usa `curlcommander/data/payloads/discovery-essentials.txt`
