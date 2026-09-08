@@ -20,6 +20,20 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Isolamento de dados por engajamento (`curlcmd engagement`, item 8.1).**
+  Antes, todo teste rodado — de qualquer cliente, em qualquer data — vivia no
+  mesmo `history.db` global; um problema de confidencialidade real (LGPD/NDA
+  costumam exigir apagar os dados de um cliente ao fim do engajamento), não só
+  de organização. `--engagement NOME` em qualquer comando que já aceita a flag
+  (requisição normal, `validate`, `bounty-scan`, `proxy`, `report`, e agora
+  também `history`/`replay`/`curl`/`export-history`/`delete-history`/
+  `clear-history`) passa a isolar histórico + achados persistidos em
+  `<diretório de dados>/engagements/NOME/history.db`, um arquivo por cliente.
+  Novo `curlcmd engagement list` (lista com contagem de registros) e
+  `curlcmd engagement delete NOME` (apaga um engajamento inteiro num comando
+  auditável — exige digitar o nome de volta para confirmar, ou `--yes` em
+  scripts). O nome do engajamento é validado contra path traversal antes de
+  virar um nome de diretório.
 * **Orquestração de recon externo (`curlcmd recon`, item 7).** Novo
   `core/recon/` cobre a fase anterior ao ataque (enumeração de superfície) sem
   reimplementar ferramentas maduras em Python: `subfinder`, `httpx-projectdiscovery`,
@@ -85,6 +99,16 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   existente não garantia), verifica a persistência real do PATH abrindo um
   processo novo com o PATH reconstruído só do registro (não do `$env:Path` já
   corrigido em sessão), e confirma que reinstalar não duplica a entrada.
+* **Vazamento de identidade de classe entre testes via `importlib.reload`.**
+  `test_config.py`/`test_proxy.py` recarregavam `curlcommander.config` para
+  testar comportamento dependente de `CURLCOMMANDER_HOME` no import — mas
+  `reload()` muta o `__dict__` do módulo *no lugar*, então toda classe/função
+  nele (inclusive uma nova `InvalidEngagementName`) ganha uma identidade nova
+  que nunca mais bate com o que outro módulo já importado capturou via
+  `from config import X` antes do reload (ex.: `cli/runner.py`) — um `except`/
+  `pytest.raises` correspondente simplesmente para de casar, silenciosamente,
+  pro resto da sessão de teste. As duas suítes agora verificam o
+  comportamento num subprocesso real em vez de recarregar o módulo compartilhado.
 
 ## [4.0.0] - 2026-09-07 — Auth macro, IDOR, SSRF OOB, WebSocket, importers e relatório HTML
 

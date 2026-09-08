@@ -377,6 +377,25 @@ Requests are stored in the OS data dir (see Storage location above) as
 request is kept as a redacted `config_json` snapshot so replay is lossless;
 schema upgrades run automatically via `PRAGMA user_version`.
 
+**Per-engagement isolation.** Without `--engagement`, everything lands in the
+shared `history.db` (ad-hoc use). With `--engagement NAME` — on any command
+that already accepts the flag (a normal request, `validate`, `bounty-scan`,
+`proxy`, `report`, `history`/`replay`/`curl`/`export-history`/`delete-history`/
+`clear-history`) — history **and** persisted findings are isolated into
+`<data dir>/engagements/NAME/history.db`, one file per client/engagement. This
+is a confidentiality boundary, not just organization: at the end of an
+engagement you can delete one client's data without touching anyone else's.
+
+```bash
+curlcmd engagement list                    # isolated engagements + row counts
+curlcmd engagement delete client-x         # deletes that engagement's whole history.db (history + findings)
+```
+
+> `engagement delete` only removes the isolated `history.db` (history +
+> findings). If you also used `--evidence PATH` pointing somewhere else, that
+> directory is untouched — you chose it, and it may not be exclusive to this
+> engagement.
+
 ---
 
 ## 6. Bug bounty — payloads → fuzz → discover

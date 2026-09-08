@@ -221,22 +221,38 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
 
     history_p = subparsers.add_parser("history", help="Lista o histórico de requisições")
     history_p.add_argument("--reveal", action="store_true", help="Resolve as referências de segredo {{VAR}}")
+    history_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
 
     replay_p = subparsers.add_parser("replay", help="Repete uma entrada do histórico pelo ID")
     replay_p.add_argument("id", type=int, help="ID da entrada do histórico")
+    replay_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
 
     curl_p = subparsers.add_parser("curl", help="Imprime o curl de uma entrada do histórico")
     curl_p.add_argument("id", type=int, help="ID da entrada do histórico")
     curl_p.add_argument("--reveal", action="store_true", help="Resolve as referências de segredo {{VAR}}")
+    curl_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
 
     export_p = subparsers.add_parser("export-history", help="Exporta o histórico para JSON")
     export_p.add_argument("-o", "--output", default="history.json", metavar="CAMINHO", help="Caminho do arquivo JSON")
     export_p.add_argument("--reveal", action="store_true", help="Resolve as referências de segredo {{VAR}}")
+    export_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
 
     delete_p = subparsers.add_parser("delete-history", help="Apaga uma entrada do histórico pelo ID")
     delete_p.add_argument("id", type=int, help="ID da entrada do histórico")
+    delete_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
 
-    subparsers.add_parser("clear-history", help="Limpa todo o histórico")
+    clear_p = subparsers.add_parser("clear-history", help="Limpa todo o histórico")
+    clear_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
+
+    # engagement (per-client data isolation: list/delete an isolated history.db)
+    eng_p = subparsers.add_parser(
+        "engagement", help="Gerencia o isolamento de dados por engajamento (--engagement em outros comandos)"
+    )
+    eng_sub = eng_p.add_subparsers(dest="engagement_cmd", required=True)
+    eng_sub.add_parser("list", help="Lista os engajamentos isolados existentes, com contagem de registros")
+    eng_delete = eng_sub.add_parser("delete", help="Apaga um engajamento isolado inteiro (histórico + achados)")
+    eng_delete.add_argument("name", metavar="NOME", help="Nome do engajamento a apagar")
+    eng_delete.add_argument("-y", "--yes", action="store_true", help="Não perguntar; assumir sim (uso em scripts/CI)")
 
     # setup (install optional extras + payloads; PT-BR, idempotent)
     setup_p = subparsers.add_parser("setup", help="Instalar recursos opcionais (navegador/proxy/socks/payloads)")
@@ -480,5 +496,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "ws",
         "report",
         "recon",
+        "engagement",
     }
 )

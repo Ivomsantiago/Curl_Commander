@@ -8,7 +8,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
+from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES, InvalidEngagementName, db_path_for
 from curlcommander.core import payload_catalog, payload_sources, scope
 from curlcommander.core.api_styles import (
     graphql_config,
@@ -62,8 +62,12 @@ EXIT_HTTP = 22  # --fail and HTTP status >= 400 (matches curl --fail)
 
 def run_cli(args) -> int:
     setup_logging(getattr(args, "log_file", None), getattr(args, "log_level", None))
-    repo = HistoryRepo(DB_PATH)
+    repo: HistoryRepo | None = None
     try:
+        # An isolated per-engagement history.db (8.1) when --engagement is
+        # given, else the shared ad-hoc DB_PATH — same confidentiality
+        # boundary the --engagement-gated validation_results/evidence have.
+        repo = HistoryRepo(db_path_for(getattr(args, "engagement", None), DB_PATH))
         reveal = getattr(args, "reveal", False)
         match args.subcommand:
             case "history":
@@ -110,6 +114,8 @@ def run_cli(args) -> int:
                 return _run_report(args)
             case "recon":
                 return _run_recon(args)
+            case "engagement":
+                return _run_engagement(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -118,11 +124,19 @@ def run_cli(args) -> int:
     except RawTransportError as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_NETWORK
-    except (ParseError, CurlParseError, RawRequestError, FileNotFoundError, AuthMacroError) as exc:
+    except (
+        ParseError,
+        CurlParseError,
+        RawRequestError,
+        FileNotFoundError,
+        AuthMacroError,
+        InvalidEngagementName,
+    ) as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_USAGE
     finally:
-        repo.close()
+        if repo is not None:
+            repo.close()
 
 
 # ---------------------------------------------------------------------------
@@ -696,7 +710,7 @@ def _persist_validation(engagement: str | None, result) -> None:
     from curlcommander.storage.validation_repo import ValidationRepo
 
     result = dataclasses.replace(result, evidence=redact_evidence(result.evidence))
-    repo = ValidationRepo(DB_PATH)
+    repo = ValidationRepo(db_path_for(engagement, DB_PATH))
     try:
         repo.save(engagement, result, datetime.now().isoformat(timespec="seconds"))
     finally:
@@ -709,13 +723,14 @@ def _run_report(args) -> int:
     from curlcommander.storage.history_repo import HistoryRepo
     from curlcommander.storage.validation_repo import ValidationRepo
 
-    repo = ValidationRepo(DB_PATH)
+    db = db_path_for(args.engagement, DB_PATH)
+    repo = ValidationRepo(db)
     try:
         stored = repo.load(args.engagement)
     finally:
         repo.close()
 
-    hrepo = HistoryRepo(DB_PATH)
+    hrepo = HistoryRepo(db)
     try:
         history = hrepo.load_by_engagement(args.engagement)
     finally:
@@ -737,6 +752,69 @@ def _run_report(args) -> int:
         f"[green]Relatório gravado em[/green] [bold]{args.out}[/bold] — "
         f"{confirmed} achado(s) confirmado(s) de {len(stored)} registro(s)."
     )
+    return EXIT_OK
+
+
+def _run_engagement(args) -> int:
+    """`curlcmd engagement list|delete <nome>` — per-engagement data isolation (8.1).
+
+    A --engagement on a request/validate/proxy/report command isolates its
+    history + persisted findings under app_dir()/engagements/<nome>/history.db
+    instead of the shared ad-hoc DB_PATH. This is the lifecycle management
+    for that: see what's isolated, and delete one client's data as a single
+    auditable action at the end of an engagement.
+    """
+    from curlcommander.config import engagement_dir, list_engagements
+    from curlcommander.storage.validation_repo import ValidationRepo
+
+    if args.engagement_cmd == "list":
+        names = list_engagements()
+        if not names:
+            _console.print("[dim]Nenhum engajamento isolado encontrado.[/dim]")
+            return EXIT_OK
+        table = Table(title="Engajamentos isolados")
+        table.add_column("Nome")
+        table.add_column("Requisições", justify="right")
+        table.add_column("Achados", justify="right")
+        table.add_column("Caminho", overflow="fold", style="dim")
+        for name in names:
+            db = db_path_for(name, DB_PATH)
+            hrepo = HistoryRepo(db)
+            vrepo = ValidationRepo(db)
+            try:
+                table.add_row(name, str(hrepo.count()), str(vrepo.count()), str(db))
+            finally:
+                hrepo.close()
+                vrepo.close()
+        _console.print(table)
+        return EXIT_OK
+
+    # delete
+    name = args.name
+    target = engagement_dir(name)  # raises InvalidEngagementName on a bad value
+    if not target.exists():
+        _console.print(f"[yellow]Engajamento[/yellow] [bold]{name}[/bold] [yellow]não existe.[/yellow]")
+        return EXIT_OK
+
+    if not getattr(args, "yes", False):
+        _console.print(
+            f"[red bold]Isto vai apagar permanentemente[/red bold] [bold]{target}[/bold] "
+            "(histórico + achados persistidos deste engajamento).\n"
+            "[dim]Evidências salvas via --evidence em outro caminho NÃO são apagadas por este comando.[/dim]"
+        )
+        try:
+            reply = input(f"Digite o nome do engajamento ({name}) para confirmar a exclusão: ")
+        except (EOFError, KeyboardInterrupt):
+            _console.print("\n[dim]cancelado[/dim]")
+            return EXIT_USAGE
+        if reply != name:
+            _console.print("[yellow]Cancelado (nome não confere).[/yellow]")
+            return EXIT_USAGE
+
+    import shutil
+
+    shutil.rmtree(target)
+    _console.print(f"[green]Engajamento[/green] [bold]{name}[/bold] [green]apagado.[/green]")
     return EXIT_OK
 
 

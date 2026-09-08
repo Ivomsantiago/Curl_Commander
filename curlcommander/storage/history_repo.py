@@ -61,6 +61,10 @@ class HistoryRepo:
         rows = self._conn.execute("SELECT * FROM history ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
+    def count(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM history").fetchone()
+        return int(row[0])
+
     def load_by_engagement(self, engagement: str) -> list[HistoryEntry]:
         """Requests fired with ``--engagement engagement`` (for `curlcmd report`)."""
         rows = self._conn.execute("SELECT * FROM history WHERE engagement = ? ORDER BY id", (engagement,)).fetchall()

@@ -437,6 +437,26 @@ armazenamento" acima) como `history.db` (SQLite, `0600` em POSIX). A requisiçã
 completa é mantida como um snapshot `config_json` redigido, então a repetição é
 sem perdas; upgrades de esquema rodam automaticamente via `PRAGMA user_version`.
 
+**Isolamento por engajamento.** Sem `--engagement`, tudo cai no `history.db`
+compartilhado (uso ad-hoc). Com `--engagement NOME` — em qualquer comando que já
+aceita a flag (requisição normal, `validate`, `bounty-scan`, `proxy`, `report`,
+`history`/`replay`/`curl`/`export-history`/`delete-history`/`clear-history`) —
+histórico **e** achados persistidos ficam isolados em
+`<diretório de dados>/engagements/NOME/history.db`, um arquivo por cliente/
+engajamento. Isso é confidencialidade, não só organização: ao final de um
+engajamento, dá pra apagar os dados de um cliente específico sem tocar em
+nenhum outro.
+
+```bash
+curlcmd engagement list                    # engajamentos isolados + contagem de registros
+curlcmd engagement delete cliente-x        # apaga histórico + achados desse engajamento inteiro
+```
+
+> `engagement delete` só apaga o `history.db` isolado (histórico + achados). Se
+> você também usou `--evidence CAMINHO` apontando pra outro lugar, aquele
+> diretório não é tocado — ele foi escolhido por você e pode não ser exclusivo
+> deste engajamento.
+
 ---
 
 ## 7. Bug bounty — payloads → fuzz → discover
