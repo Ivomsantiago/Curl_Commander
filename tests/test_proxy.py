@@ -1,6 +1,7 @@
 """H.4 tests: intercepting-proxy logic (rules, scope, addon via mitmproxy tflow)."""
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -88,13 +89,23 @@ def test_addon_ignores_out_of_scope():
     repo.close()
 
 
-def test_ca_dir_created_restricted(monkeypatch, tmp_path):
-    monkeypatch.setenv("CURLCOMMANDER_HOME", str(tmp_path / "cc"))
-    import importlib
+def test_ca_dir_created_restricted(tmp_path):
+    """ca_dir() under a fresh CURLCOMMANDER_HOME, checked via a real
+    subprocess rather than importlib.reload() — see
+    test_config.py::test_reload_respects_override for why: reload() mutates
+    the shared config module dict in place, permanently changing the
+    identity of every class/function in it (including ones other
+    already-imported modules hold a direct reference to) for the rest of the
+    test session, no matter how carefully the env var itself is restored
+    afterward."""
+    import os
+    import subprocess
+    import sys
 
-    from curlcommander import config as cfg
-
-    importlib.reload(cfg)
-    d = proxy.ca_dir()
+    target = tmp_path / "cc"
+    env = dict(os.environ, CURLCOMMANDER_HOME=str(target))
+    code = "import curlcommander.core.proxy as proxy; print(proxy.ca_dir())"
+    result = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True)
+    d = Path(result.stdout.strip())
     assert d.exists()
-    importlib.reload(cfg)
+    assert d == target / "ca"

@@ -3,6 +3,7 @@
 import types
 
 from curlcommander.cli import runner
+from curlcommander.config import db_path_for
 from curlcommander.core.report import build_report, report_severity
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.core.validators.base import CANDIDATE, CONFIRMED, NOT_VULNERABLE, ValidationResult
@@ -122,7 +123,9 @@ def test_build_report_no_confirmed_shows_empty_and_others():
 def test_run_report_writes_html(tmp_path, monkeypatch, capsys):
     db = tmp_path / "h.db"
     monkeypatch.setattr(runner, "DB_PATH", str(db))
-    repo = ValidationRepo(str(db))
+    # --engagement uses its own isolated DB (8.1), not the ad-hoc DB_PATH.
+    iso_db = db_path_for("ENG", db)
+    repo = ValidationRepo(str(iso_db))
     repo.save("ENG", ValidationResult("ssrf", CONFIRMED, "https://t/f", detail="hit"), "2026-09-07T00:00:00")
     repo.close()
 
@@ -164,7 +167,7 @@ def test_persist_validation_redacts_evidence_before_saving(tmp_path, monkeypatch
     )
     runner._persist_validation("ENG", result)
 
-    repo = ValidationRepo(str(db))
+    repo = ValidationRepo(str(db_path_for("ENG", db)))
     try:
         stored = repo.load("ENG")
     finally:
@@ -199,12 +202,13 @@ def test_build_report_includes_history_appendix():
 def test_run_report_aggregates_history_alongside_findings(tmp_path, monkeypatch):
     db = tmp_path / "h.db"
     monkeypatch.setattr(runner, "DB_PATH", str(db))
+    iso_db = db_path_for("ENG", db)
 
-    vrepo = ValidationRepo(str(db))
+    vrepo = ValidationRepo(str(iso_db))
     vrepo.save("ENG", ValidationResult("xss", CONFIRMED, "https://t/x"), "2026-09-07T00:00:00")
     vrepo.close()
 
-    hrepo = HistoryRepo(str(db))
+    hrepo = HistoryRepo(str(iso_db))
     hrepo.save(
         HistoryEntry(
             id=0,
@@ -237,7 +241,7 @@ def test_bounty_scan_candidates_persist_and_appear_in_report(tmp_path, monkeypat
     )
     runner._persist_validation("ENG", result)
 
-    repo = ValidationRepo(str(db))
+    repo = ValidationRepo(str(db_path_for("ENG", db)))
     try:
         stored = repo.load("ENG")
     finally:

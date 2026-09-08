@@ -8,7 +8,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
-from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES
+from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES, InvalidEngagementName, db_path_for
 from curlcommander.core import payload_catalog, payload_sources, scope
 from curlcommander.core.api_styles import (
     graphql_config,
@@ -30,6 +30,7 @@ from curlcommander.core.discovery import (
     discover,
     severity_of,
 )
+from curlcommander.core.engagement_config import EngagementConfigError, apply_defaults, load_engagement_config
 from curlcommander.core.evidence import compose_raw_response, save_evidence
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
@@ -62,8 +63,19 @@ EXIT_HTTP = 22  # --fail and HTTP status >= 400 (matches curl --fail)
 
 def run_cli(args) -> int:
     setup_logging(getattr(args, "log_file", None), getattr(args, "log_level", None))
-    repo = HistoryRepo(DB_PATH)
+    repo: HistoryRepo | None = None
     try:
+        # A single --config file (8.4) fills in --engagement/--scope/
+        # --auth-macro/--proxy wherever the user left them unset on this
+        # invocation; anything actually typed on the command line still wins.
+        config_path = getattr(args, "config", None)
+        if config_path:
+            apply_defaults(args, load_engagement_config(config_path))
+
+        # An isolated per-engagement history.db (8.1) when --engagement is
+        # given, else the shared ad-hoc DB_PATH — same confidentiality
+        # boundary the --engagement-gated validation_results/evidence have.
+        repo = HistoryRepo(db_path_for(getattr(args, "engagement", None), DB_PATH))
         reveal = getattr(args, "reveal", False)
         match args.subcommand:
             case "history":
@@ -110,6 +122,8 @@ def run_cli(args) -> int:
                 return _run_report(args)
             case "recon":
                 return _run_recon(args)
+            case "engagement":
+                return _run_engagement(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -118,11 +132,20 @@ def run_cli(args) -> int:
     except RawTransportError as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_NETWORK
-    except (ParseError, CurlParseError, RawRequestError, FileNotFoundError, AuthMacroError) as exc:
+    except (
+        ParseError,
+        CurlParseError,
+        RawRequestError,
+        FileNotFoundError,
+        AuthMacroError,
+        InvalidEngagementName,
+        EngagementConfigError,
+    ) as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_USAGE
     finally:
-        repo.close()
+        if repo is not None:
+            repo.close()
 
 
 # ---------------------------------------------------------------------------
@@ -520,15 +543,29 @@ def _print_fuzz_table(results, title: str) -> None:
     _console.print(table)
 
 
+_ESSENTIALS = "discovery-essentials"
+
+
 def _run_discover(args) -> int:
     if getattr(args, "scope", None):
         scope.enforce(args.url, scope.load_scope(args.scope))
+    wordlists = getattr(args, "wordlists", []) or []
+    payloads_cats = getattr(args, "payloads", []) or []
     try:
         words: list[str] = []
-        for spec in getattr(args, "wordlists", []) or []:
+        for spec in wordlists:
             words += payload_catalog.resolve_spec(spec)
-        for cat in getattr(args, "payloads", []) or []:
+        for cat in payloads_cats:
             words += payload_catalog.load_category(cat)
+        # Day-1 default (10.2): no -w/--payloads at all -> the embedded
+        # essentials tier instead of refusing outright. A source explicitly
+        # requested but empty/unsynced is still an error, not silently swapped.
+        if not wordlists and not payloads_cats:
+            words = payload_catalog.resolve_spec(_ESSENTIALS)
+            _console.print(
+                "[dim]Nenhum -w/--payloads informado — usando a wordlist essencial embutida "
+                f"({len(words)} entradas). Rode `curlcmd payloads sync seclists` para cobertura completa.[/dim]"
+            )
     except payload_catalog.CatalogError as exc:
         _console.print(f"[red]Error:[/red] {exc}")
         return EXIT_USAGE
@@ -683,24 +720,12 @@ def _persist_idor_finding(args, finding) -> None:
 def _persist_validation(engagement: str | None, result) -> None:
     """Store a validated finding so `curlcmd report` can aggregate it later.
 
-    Evidence is redacted before it ever touches disk — the same "redact by
-    default" rule the request history follows — since a validator's evidence
-    can carry a captured raw request or DOM snapshot with real credentials in
-    it (see core.redaction.redact_evidence).
+    Thin wrapper over core.validation_store.persist_validation, which also
+    backs the GUI's Validate tab (item 9) — one redaction path for both.
     """
-    if not engagement:
-        return
-    import dataclasses
+    from curlcommander.core.validation_store import persist_validation
 
-    from curlcommander.core.redaction import redact_evidence
-    from curlcommander.storage.validation_repo import ValidationRepo
-
-    result = dataclasses.replace(result, evidence=redact_evidence(result.evidence))
-    repo = ValidationRepo(DB_PATH)
-    try:
-        repo.save(engagement, result, datetime.now().isoformat(timespec="seconds"))
-    finally:
-        repo.close()
+    persist_validation(engagement, result, DB_PATH)
 
 
 def _run_report(args) -> int:
@@ -709,13 +734,18 @@ def _run_report(args) -> int:
     from curlcommander.storage.history_repo import HistoryRepo
     from curlcommander.storage.validation_repo import ValidationRepo
 
-    repo = ValidationRepo(DB_PATH)
+    if not getattr(args, "engagement", None):
+        _console.print("[red]Refused:[/red] report requires --engagement LABEL (ou defina via --config).")
+        return EXIT_USAGE
+
+    db = db_path_for(args.engagement, DB_PATH)
+    repo = ValidationRepo(db)
     try:
         stored = repo.load(args.engagement)
     finally:
         repo.close()
 
-    hrepo = HistoryRepo(DB_PATH)
+    hrepo = HistoryRepo(db)
     try:
         history = hrepo.load_by_engagement(args.engagement)
     finally:
@@ -737,6 +767,69 @@ def _run_report(args) -> int:
         f"[green]Relatório gravado em[/green] [bold]{args.out}[/bold] — "
         f"{confirmed} achado(s) confirmado(s) de {len(stored)} registro(s)."
     )
+    return EXIT_OK
+
+
+def _run_engagement(args) -> int:
+    """`curlcmd engagement list|delete <nome>` — per-engagement data isolation (8.1).
+
+    A --engagement on a request/validate/proxy/report command isolates its
+    history + persisted findings under app_dir()/engagements/<nome>/history.db
+    instead of the shared ad-hoc DB_PATH. This is the lifecycle management
+    for that: see what's isolated, and delete one client's data as a single
+    auditable action at the end of an engagement.
+    """
+    from curlcommander.config import engagement_dir, list_engagements
+    from curlcommander.storage.validation_repo import ValidationRepo
+
+    if args.engagement_cmd == "list":
+        names = list_engagements()
+        if not names:
+            _console.print("[dim]Nenhum engajamento isolado encontrado.[/dim]")
+            return EXIT_OK
+        table = Table(title="Engajamentos isolados")
+        table.add_column("Nome")
+        table.add_column("Requisições", justify="right")
+        table.add_column("Achados", justify="right")
+        table.add_column("Caminho", overflow="fold", style="dim")
+        for name in names:
+            db = db_path_for(name, DB_PATH)
+            hrepo = HistoryRepo(db)
+            vrepo = ValidationRepo(db)
+            try:
+                table.add_row(name, str(hrepo.count()), str(vrepo.count()), str(db))
+            finally:
+                hrepo.close()
+                vrepo.close()
+        _console.print(table)
+        return EXIT_OK
+
+    # delete
+    name = args.name
+    target = engagement_dir(name)  # raises InvalidEngagementName on a bad value
+    if not target.exists():
+        _console.print(f"[yellow]Engajamento[/yellow] [bold]{name}[/bold] [yellow]não existe.[/yellow]")
+        return EXIT_OK
+
+    if not getattr(args, "yes", False):
+        _console.print(
+            f"[red bold]Isto vai apagar permanentemente[/red bold] [bold]{target}[/bold] "
+            "(histórico + achados persistidos deste engajamento).\n"
+            "[dim]Evidências salvas via --evidence em outro caminho NÃO são apagadas por este comando.[/dim]"
+        )
+        try:
+            reply = input(f"Digite o nome do engajamento ({name}) para confirmar a exclusão: ")
+        except (EOFError, KeyboardInterrupt):
+            _console.print("\n[dim]cancelado[/dim]")
+            return EXIT_USAGE
+        if reply != name:
+            _console.print("[yellow]Cancelado (nome não confere).[/yellow]")
+            return EXIT_USAGE
+
+    import shutil
+
+    shutil.rmtree(target)
+    _console.print(f"[green]Engajamento[/green] [bold]{name}[/bold] [green]apagado.[/green]")
     return EXIT_OK
 
 

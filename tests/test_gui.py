@@ -62,13 +62,40 @@ async def test_app_mounts_all_panels(tmp_path):
     app = CurlCommanderApp(db_path=str(tmp_path / "h.db"))
     async with app.run_test():
         from curlcommander.gui.curl_panel import CurlPanel
+        from curlcommander.gui.findings_panel import FindingsPanel
+        from curlcommander.gui.recon_panel import ReconPanel
         from curlcommander.gui.request_panel import RequestPanel
         from curlcommander.gui.response_panel import ResponsePanel
+        from curlcommander.gui.status_bar import StatusBar
+        from curlcommander.gui.validate_panel import ValidatePanel
+        from curlcommander.gui.ws_panel import WSPanel
 
         assert app.query_one(RequestPanel)
         assert app.query_one(ResponsePanel)
         assert app.query_one(CurlPanel)
         assert app.query_one(HistoryPanel)
+        assert app.query_one(ValidatePanel)
+        assert app.query_one(ReconPanel)
+        assert app.query_one(FindingsPanel)
+        assert app.query_one(WSPanel)
+        assert app.query_one(StatusBar)
+
+
+async def test_status_bar_stays_within_the_visible_screen(tmp_path):
+    """Regression test (item 9.4): the status bar is a normal (non-docked)
+    sibling composed between TabbedContent and Footer. TabbedContent's own
+    height is `auto`, and an `auto` container whose child asks for `1fr`
+    greedily claims the whole remaining screen — so without `dock: bottom`
+    on the status bar, it and the Footer were both squeezed into the one row
+    past TabbedContent's oversized claim, rendering neither visibly."""
+    from curlcommander.gui.status_bar import StatusBar
+
+    app = CurlCommanderApp(db_path=str(tmp_path / "h.db"))
+    async with app.run_test(size=(120, 45)) as pilot:
+        await pilot.pause()
+        region = app.query_one(StatusBar).region
+        assert region.y + region.height <= app.size.height
+        assert region.y < app.size.height
 
 
 async def test_options_panel_reachable_in_config(tmp_path):

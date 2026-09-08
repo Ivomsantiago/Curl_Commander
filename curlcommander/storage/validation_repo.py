@@ -76,6 +76,10 @@ class ValidationRepo:
         rows = self._conn.execute("SELECT DISTINCT engagement FROM validation_results ORDER BY engagement").fetchall()
         return [row["engagement"] for row in rows]
 
+    def count(self) -> int:
+        row = self._conn.execute("SELECT COUNT(*) FROM validation_results").fetchone()
+        return int(row[0])
+
     @staticmethod
     def _row(row: sqlite3.Row) -> StoredValidation:
         try:

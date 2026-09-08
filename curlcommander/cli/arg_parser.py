@@ -63,6 +63,12 @@ def build_request_parser() -> argparse.ArgumentParser:
     opsec.add_argument("--dry-run", action="store_true", help="Mostra o que seria enviado na rede, sem enviar")
     opsec.add_argument("--evidence", metavar="DIR", help="Salva requisição+resposta+metadados crus em DIR")
     opsec.add_argument("--engagement", metavar="LABEL", help="Rótulo de autorização/engajamento p/ evidência")
+    opsec.add_argument(
+        "--config",
+        metavar="ARQUIVO.TOML",
+        help="Config de engajamento (--engagement/--scope/--auth-macro/--proxy padrão; "
+        "flags explícitas na linha de comando sempre vencem)",
+    )
 
     fuzz = parser.add_argument_group("fuzzing")
     fuzz.add_argument(
@@ -219,24 +225,48 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
 
+    _config_help = "Config de engajamento (--engagement padrão; flag explícita sempre vence)"
+
     history_p = subparsers.add_parser("history", help="Lista o histórico de requisições")
     history_p.add_argument("--reveal", action="store_true", help="Resolve as referências de segredo {{VAR}}")
+    history_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
+    history_p.add_argument("--config", metavar="ARQUIVO.TOML", help=_config_help)
 
     replay_p = subparsers.add_parser("replay", help="Repete uma entrada do histórico pelo ID")
     replay_p.add_argument("id", type=int, help="ID da entrada do histórico")
+    replay_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
+    replay_p.add_argument("--config", metavar="ARQUIVO.TOML", help=_config_help)
 
     curl_p = subparsers.add_parser("curl", help="Imprime o curl de uma entrada do histórico")
     curl_p.add_argument("id", type=int, help="ID da entrada do histórico")
     curl_p.add_argument("--reveal", action="store_true", help="Resolve as referências de segredo {{VAR}}")
+    curl_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
+    curl_p.add_argument("--config", metavar="ARQUIVO.TOML", help=_config_help)
 
     export_p = subparsers.add_parser("export-history", help="Exporta o histórico para JSON")
     export_p.add_argument("-o", "--output", default="history.json", metavar="CAMINHO", help="Caminho do arquivo JSON")
     export_p.add_argument("--reveal", action="store_true", help="Resolve as referências de segredo {{VAR}}")
+    export_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
+    export_p.add_argument("--config", metavar="ARQUIVO.TOML", help=_config_help)
 
     delete_p = subparsers.add_parser("delete-history", help="Apaga uma entrada do histórico pelo ID")
     delete_p.add_argument("id", type=int, help="ID da entrada do histórico")
+    delete_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
+    delete_p.add_argument("--config", metavar="ARQUIVO.TOML", help=_config_help)
 
-    subparsers.add_parser("clear-history", help="Limpa todo o histórico")
+    clear_p = subparsers.add_parser("clear-history", help="Limpa todo o histórico")
+    clear_p.add_argument("--engagement", metavar="LABEL", help="Usa o histórico isolado deste engajamento")
+    clear_p.add_argument("--config", metavar="ARQUIVO.TOML", help=_config_help)
+
+    # engagement (per-client data isolation: list/delete an isolated history.db)
+    eng_p = subparsers.add_parser(
+        "engagement", help="Gerencia o isolamento de dados por engajamento (--engagement em outros comandos)"
+    )
+    eng_sub = eng_p.add_subparsers(dest="engagement_cmd", required=True)
+    eng_sub.add_parser("list", help="Lista os engajamentos isolados existentes, com contagem de registros")
+    eng_delete = eng_sub.add_parser("delete", help="Apaga um engajamento isolado inteiro (histórico + achados)")
+    eng_delete.add_argument("name", metavar="NOME", help="Nome do engajamento a apagar")
+    eng_delete.add_argument("-y", "--yes", action="store_true", help="Não perguntar; assumir sim (uso em scripts/CI)")
 
     # setup (install optional extras + payloads; PT-BR, idempotent)
     setup_p = subparsers.add_parser("setup", help="Instalar recursos opcionais (navegador/proxy/socks/payloads)")
@@ -292,6 +322,11 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     disc.add_argument("--timeout", type=float, default=30.0)
     disc.add_argument("--auth-macro", metavar="ARQUIVO", help="Macro de login (JSON/YAML)")
     disc.add_argument("--session-die-regex", metavar="REGEX", help="Regex de sessão expirada")
+    disc.add_argument(
+        "--config",
+        metavar="ARQUIVO.TOML",
+        help="Config de engajamento (--scope/--auth-macro padrão; flags explícitas sempre vencem)",
+    )
 
     # import (OpenAPI / Postman collection -> history + optional JSON out)
     imp = subparsers.add_parser("import", help="Importa uma coleção (OpenAPI/Postman) para o histórico")
@@ -303,8 +338,13 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
 
     # report (aggregate validated findings for an engagement -> HTML)
     rep = subparsers.add_parser("report", help="Gera um relatório HTML dos achados de um engajamento")
-    rep.add_argument("--engagement", required=True, metavar="LABEL", help="Engajamento a agregar")
+    rep.add_argument("--engagement", metavar="LABEL", help="Engajamento a agregar (ou defina via --config)")
     rep.add_argument("--out", required=True, metavar="ARQUIVO", help="Caminho do HTML de saída")
+    rep.add_argument(
+        "--config",
+        metavar="ARQUIVO.TOML",
+        help="Config de engajamento (--engagement padrão; flag explícita sempre vence)",
+    )
 
     # ws (WebSocket client + fuzzer, extra [ws])
     ws_p = subparsers.add_parser("ws", help="Cliente e fuzzing de WebSocket (extra [ws])")
@@ -377,6 +417,11 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     )
     prox.add_argument("--launch-browser", action="store_true", help="Abre o Chromium roteado pelo proxy")
     prox.add_argument("--ca", action="store_true", help="Imprime o caminho da CA + guia de instalação/remoção e sai")
+    prox.add_argument(
+        "--config",
+        metavar="ARQUIVO.TOML",
+        help="Config de engajamento (--engagement/--scope padrão; flags explícitas sempre vencem)",
+    )
 
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Valida uma vulnerabilidade (navegador/HTTP)")
@@ -443,6 +488,11 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
         metavar="INI-FIM",
         help="Enumeração horizontal com a identidade B após confirmar (ex.: 1000-1050)",
     )
+    val.add_argument(
+        "--config",
+        metavar="ARQUIVO.TOML",
+        help="Config de engajamento (--engagement/--scope padrão; flags explícitas sempre vencem)",
+    )
 
     # bounty-scan (discover + per-category fuzz, consolidated by severity)
     bounty = subparsers.add_parser("bounty-scan", help="Perfil encadeado de discovery + fuzz de payloads")
@@ -456,6 +506,11 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     bounty.add_argument("--timeout", type=float, default=30.0)
     bounty.add_argument("--auth-macro", metavar="ARQUIVO", help="Macro de login (JSON/YAML)")
     bounty.add_argument("--session-die-regex", metavar="REGEX", help="Regex de sessão expirada")
+    bounty.add_argument(
+        "--config",
+        metavar="ARQUIVO.TOML",
+        help="Config de engajamento (--engagement/--scope/--auth-macro padrão; flags explícitas sempre vencem)",
+    )
 
     return parser
 
@@ -480,5 +535,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "ws",
         "report",
         "recon",
+        "engagement",
     }
 )

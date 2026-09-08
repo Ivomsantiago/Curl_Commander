@@ -20,6 +20,96 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Chromium embutido no binário standalone — variante "full" (item 10.3).**
+  `packaging/curlcmd.spec` agora detecta em tempo de build se
+  `PLAYWRIGHT_BROWSERS_PATH` aponta pra um Chromium já instalado
+  (`playwright install chromium`); se sim, embute a árvore inteira no bundle
+  (`pw-browsers/`) e muda automaticamente de onefile para onedir (só nesse
+  caso — sem isso, o build continua onefile, byte a byte como antes: zero
+  mudança para quem não pediu a variante full). Novo
+  `packaging/rthook_chromium.py` aponta `PLAYWRIGHT_BROWSERS_PATH` para a
+  cópia embutida via `sys._MEIPASS` (funciona em onefile e onedir sem
+  distinção). `.github/workflows/release.yml` passa a publicar
+  `curlcmd-<os>` (lite, inalterado) **e** `curlcmd-<os>-full.tar.gz`/`.zip`
+  (Linux/macOS/Windows) por release, com um smoke test dedicado que
+  *realmente lança* o Chromium embutido (não só confere se o caminho existe)
+  antes de publicar — a validação cross-OS que o próprio pedido exigia antes
+  de prometer que funciona em todo lugar.
+  - **Corrigido en passant, achado durante a verificação local desta feature**
+    (`core/browser.py::chromium_executable`): o Playwright atual baixa
+    "Chrome for Testing" em `chrome-linux64`/`chrome-win64`/`chrome-mac64`
+    (sufixo `-64`), não mais `chrome-linux`/`chrome-win`/`chrome-mac`. O glob
+    só reconhecia o layout antigo — `curlcmd doctor` reportava Chromium como
+    ausente mesmo com um Chromium funcional instalado (o `validate` ainda
+    funcionava por baixo, via a resolução própria do Playwright a partir de
+    `PLAYWRIGHT_BROWSERS_PATH`, mascarando o diagnóstico incorreto). Agora
+    tenta os dois layouts. Sem teste anterior cobrindo esta função —
+    `tests/test_browser_chromium_path.py` (novo) cobre ambos os layouts.
+* **Wordlist essencial embutida para `discover` (item 10.2).** Rodar
+  `discover` sem `-w`/`--payloads` antes de qualquer `payloads sync` recusava
+  o comando; agora usa `curlcommander/data/payloads/discovery-essentials.txt`
+  (~385 caminhos comuns curados pelo próprio projeto — `.env`, `.git/config`,
+  `admin`, `wp-admin`, `api/v1`, backups, painéis administrativos etc.) como
+  padrão, com aviso indicando `curlcmd payloads sync seclists` para cobertura
+  completa. Uma fonte explicitamente pedida que resolve vazia continua
+  recusando (o fallback só entra quando nada foi pedido). Reaproveita o
+  mecanismo já existente de listas embutidas (`core/payloads.py`), sem novo
+  subsistema.
+* **Cinco novas abas na GUI (item 9): Validar, Recon, Achados, WebSocket +
+  barra de status.** A TUI ganhou paridade com a CLI para os fluxos que só
+  existiam via linha de comando:
+  - **Validar** — formulário sobre `core.validators.*` (xss/cors/
+    open-redirect/clickjacking/csrf/ssrf/idor), campos por categoria, mesmas
+    cores de veredito da CLI, e persistência automática via o novo
+    `core/validation_store.py` (extraído de `cli/runner.py::_persist_validation`
+    para que CLI e GUI compartilhem o mesmo caminho de redação — nunca dois
+    lugares redigindo evidência de formas que podem divergir).
+  - **Recon** — árvore domínio→subdomínios→URLs vivas→achados do nuclei por
+    severidade, alimentada ao vivo por `core.recon.scan` (subfinder→httpx→
+    nuclei); promove uma URL para o Repeater.
+  - **Achados** — tabela ao vivo de `validation_results` do engajamento
+    ativo, agrupável por severidade, com botão para gerar e abrir o relatório
+    HTML (`core.report.build_report`).
+  - **WebSocket** — cliente interativo (extra `[ws]`) com colunas separadas
+    de enviado/recebido, sobre `core.ws_client.WSClient`.
+  - **Barra de status** — define engajamento/escopo/macro de login uma vez
+    para todas as abas, em vez de cada uma carregar sua própria cópia dos
+    três campos (o equivalente em GUI do `--config` do item 8.4). Corrigida
+    durante o desenvolvimento: como sibling não-dockado composto entre o
+    `TabbedContent` (altura `auto`) e o `Footer` (dockado), a barra de status
+    e o rodapé disputavam a mesma linha e nenhum aparecia — um container
+    `auto` cujo filho pede `1fr` reivindica toda a tela restante. Corrigido
+    fixando a barra de status com `dock: bottom`, com teste de regressão
+    (`tests/test_gui.py::test_status_bar_stays_within_the_visible_screen`)
+    checando que a região renderizada cabe na tela.
+* **Arquivo único de config de engajamento (`--config`, item 8.4).** Antes,
+  um engajamento que dura semanas exigia repetir `--engagement`/`--scope`/
+  `--auth-macro`/`--proxy` em toda invocação — e como `--engagement` é uma
+  string livre casada por igualdade exata, um typo criava silenciosamente um
+  segundo engajamento sem nenhum aviso. Novo `curlcommander/core/
+  engagement_config.py` lê um TOML (stdlib `tomllib`, sem dependência nova)
+  com `[engagement] name/scope_file/auth_macro/proxy` uma vez; `--config
+  ARQUIVO.TOML` preenche essas flags só onde a chamada atual as deixou em
+  branco — qualquer flag explícita na linha de comando sempre vence sobre o
+  arquivo. Disponível em toda a superfície que já aceita essas flags
+  (requisição normal, `discover`, `bounty-scan`, `validate`, `proxy`,
+  `report`, `history`/`replay`/`curl`/`export-history`/`delete-history`/
+  `clear-history`). `report --engagement` deixa de ser obrigatório na flag
+  (pode vir só do `--config`), mas continua obrigatório em algum dos dois.
+* **Isolamento de dados por engajamento (`curlcmd engagement`, item 8.1).**
+  Antes, todo teste rodado — de qualquer cliente, em qualquer data — vivia no
+  mesmo `history.db` global; um problema de confidencialidade real (LGPD/NDA
+  costumam exigir apagar os dados de um cliente ao fim do engajamento), não só
+  de organização. `--engagement NOME` em qualquer comando que já aceita a flag
+  (requisição normal, `validate`, `bounty-scan`, `proxy`, `report`, e agora
+  também `history`/`replay`/`curl`/`export-history`/`delete-history`/
+  `clear-history`) passa a isolar histórico + achados persistidos em
+  `<diretório de dados>/engagements/NOME/history.db`, um arquivo por cliente.
+  Novo `curlcmd engagement list` (lista com contagem de registros) e
+  `curlcmd engagement delete NOME` (apaga um engajamento inteiro num comando
+  auditável — exige digitar o nome de volta para confirmar, ou `--yes` em
+  scripts). O nome do engajamento é validado contra path traversal antes de
+  virar um nome de diretório.
 * **Orquestração de recon externo (`curlcmd recon`, item 7).** Novo
   `core/recon/` cobre a fase anterior ao ataque (enumeração de superfície) sem
   reimplementar ferramentas maduras em Python: `subfinder`, `httpx-projectdiscovery`,
@@ -70,6 +160,31 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   `_substitute_variables` própria, duplicando `redaction.reveal_text` (já
   usado por `auth_macro.py` e por `--reveal`). Removida a duplicata; todo
   `{{VAR}}` no projeto resolve pela mesma função agora.
+* **`scripts/install.ps1` não atualizava o PATH de verdade (item 11).** No
+  branch `Install-WithVenv` (uv e pipx ausentes — o caso mais comum num
+  Windows limpo), o aviso de "adicione ao PATH" era só `Write-Host`:
+  `[Environment]::SetEnvironmentVariable` nunca era chamado, então `curlcmd`
+  ficava permanentemente ausente do PATH após `irm | iex`. Agora o instalador
+  pergunta e grava o PATH de verdade (idempotente — não duplica entrada num
+  reinstall) nos três métodos (`uv`/`pipx`/venv), e uma nova
+  `Update-CurrentSessionPath` atualiza `$env:Path` do processo atual logo
+  após qualquer mudança de PATH, então `curlcmd` já funciona na MESMA janela
+  que rodou o instalador, sem precisar abrir um terminal novo. Novo job de CI
+  `install-smoke-venv-windows` força a ausência de `uv`/`pipx` (garantindo que
+  o branch com o bug seja realmente exercitado, o que o `install-smoke`
+  existente não garantia), verifica a persistência real do PATH abrindo um
+  processo novo com o PATH reconstruído só do registro (não do `$env:Path` já
+  corrigido em sessão), e confirma que reinstalar não duplica a entrada.
+* **Vazamento de identidade de classe entre testes via `importlib.reload`.**
+  `test_config.py`/`test_proxy.py` recarregavam `curlcommander.config` para
+  testar comportamento dependente de `CURLCOMMANDER_HOME` no import — mas
+  `reload()` muta o `__dict__` do módulo *no lugar*, então toda classe/função
+  nele (inclusive uma nova `InvalidEngagementName`) ganha uma identidade nova
+  que nunca mais bate com o que outro módulo já importado capturou via
+  `from config import X` antes do reload (ex.: `cli/runner.py`) — um `except`/
+  `pytest.raises` correspondente simplesmente para de casar, silenciosamente,
+  pro resto da sessão de teste. As duas suítes agora verificam o
+  comportamento num subprocesso real em vez de recarregar o módulo compartilhado.
 
 ## [4.0.0] - 2026-09-07 — Auth macro, IDOR, SSRF OOB, WebSocket, importers e relatório HTML
 

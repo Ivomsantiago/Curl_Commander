@@ -122,27 +122,50 @@ também preferem instalações isoladas e só tocam o Python do sistema com
 
 ### Binário standalone (sem Python)
 
-Baixe `curlcmd` / `curlcmd.exe` para o seu SO na página de
-[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases), confira o
-checksum contra o `SHA256SUMS` e rode direto:
+Duas variantes na página de
+[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases) — confira
+o checksum contra o `SHA256SUMS` publicado antes de rodar:
+
+- **`curlcmd-<SO>`** (lite) — um arquivo só, como sempre foi. Validadores em
+  navegador ainda exigem instalar o Chromium à parte (veja a nota abaixo).
+- **`curlcmd-<SO>-full.tar.gz`/`.zip`** (item 10.3) — uma pasta com um
+  Chromium real já embutido, extraia e rode; validadores em navegador
+  funcionam offline, sem nenhum passo extra. Bem maior por causa disso
+  (Chromium sozinho passa de 150 MB).
 
 ```bash
-chmod +x curlcmd && ./curlcmd --version          # Linux/macOS
-.\curlcmd.exe --version                           # Windows (PowerShell)
+chmod +x curlcmd && ./curlcmd --version                    # lite, Linux/macOS
+.\curlcmd.exe --version                                      # lite, Windows (PowerShell)
+
+tar xzf curlcmd-linux-x86_64-full.tar.gz && ./curlcmd/curlcmd --version   # full, Linux/macOS
+# full no Windows: extraia o .zip e rode curlcmd\curlcmd.exe
 ```
 
 Para gerar você mesmo: `pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
-(saída em `dist/`). Há também um `curlcmd.pyz` de arquivo único (precisa de
-Python, sem instalar): `pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
+gera a variante lite (saída em `dist/curlcmd`). Para a variante full, instale o
+Chromium num diretório e aponte `PLAYWRIGHT_BROWSERS_PATH` para ele antes de
+rodar o PyInstaller — o spec detecta e embute automaticamente:
+
+```bash
+pip install -e ".[build-exe,browser]"
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/pw-browsers"
+python -m playwright install chromium
+pyinstaller packaging/curlcmd.spec   # saída em dist/curlcmd/ (pasta)
+```
+
+Há também um `curlcmd.pyz` de arquivo único (precisa de Python, sem instalar):
+`pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
 
 > **Nota sobre antivírus.** Binários do PyInstaller às vezes disparam um falso
 > positivo no Windows Defender/SmartScreen. Confira o SHA256 publicado, ou
 > instale via `pipx`/`pip` se o seu ambiente bloqueia binários não assinados.
 >
-> **Recursos que dependem de Python.** O binário standalone **não** inclui
-> Chromium/mitmproxy/payloads: validadores em navegador, proxy interceptador e
-> download de wordlists exigem uma instalação via Python. Rode `curlcmd doctor`
-> para o diagnóstico.
+> **Recursos que dependem de Python.** O binário standalone **lite** não
+> inclui Chromium/mitmproxy/payloads: validadores em navegador, proxy
+> interceptador e download de wordlists exigem uma instalação via Python
+> (ou baixe a variante **full** acima, que já traz o Chromium). mitmproxy
+> e o download de wordlists continuam exigindo Python em ambas as
+> variantes. Rode `curlcmd doctor` para o diagnóstico.
 
 ---
 
@@ -412,6 +435,23 @@ A TUI é organizada em abas (um "Burp na TUI"):
 - **Proxy** — inicia o proxy interceptador (extra `[proxy]`), lista o tráfego
   capturado ao vivo (fora do escopo fica esmaecido, não some) e envia qualquer
   captura para o Repeater ou o Intruder.
+- **Validar** — formulário sobre os validadores (`xss`/`cors`/`open-redirect`/
+  `clickjacking`/`csrf`/`ssrf`/`idor`), campos específicos por categoria,
+  cores de veredito iguais às da CLI (CONFIRMED vermelho, REFLECTED amarelo,
+  NOT_VULNERABLE verde) e persistência automática do achado.
+- **Recon** — árvore domínio → subdomínios → URLs vivas → achados do nuclei
+  por severidade, atualizada ao vivo conforme o pipeline
+  subfinder→httpx→nuclei roda; Enter/clique numa URL promove para o Repeater.
+- **Achados** — tabela ao vivo dos achados persistidos do engajamento ativo,
+  agrupável por severidade, com botão **Gerar relatório** (chama `core.report`
+  e abre o HTML resultante).
+- **WebSocket** — conecta, envia mensagens e mostra enviado/recebido em duas
+  colunas (extra `[ws]`).
+
+Um rodapé fixo (barra de status) permite definir o **engajamento**, o
+**arquivo de escopo** e a **macro de login** ativos uma vez — como o
+`--config` da CLI (seção 8.1), toda aba lê esse mesmo estado em vez de
+carregar sua própria cópia dos três campos.
 
 O visualizador de resposta das abas novas tem Pretty/Raw/Headers/Cookies, busca
 com contagem navegável ("2/7"), diff entre reenvios e o botão **Analisar**
@@ -436,6 +476,56 @@ As requisições são guardadas no diretório de dados do SO (veja "Local de
 armazenamento" acima) como `history.db` (SQLite, `0600` em POSIX). A requisição
 completa é mantida como um snapshot `config_json` redigido, então a repetição é
 sem perdas; upgrades de esquema rodam automaticamente via `PRAGMA user_version`.
+
+**Isolamento por engajamento.** Sem `--engagement`, tudo cai no `history.db`
+compartilhado (uso ad-hoc). Com `--engagement NOME` — em qualquer comando que já
+aceita a flag (requisição normal, `validate`, `bounty-scan`, `proxy`, `report`,
+`history`/`replay`/`curl`/`export-history`/`delete-history`/`clear-history`) —
+histórico **e** achados persistidos ficam isolados em
+`<diretório de dados>/engagements/NOME/history.db`, um arquivo por cliente/
+engajamento. Isso é confidencialidade, não só organização: ao final de um
+engajamento, dá pra apagar os dados de um cliente específico sem tocar em
+nenhum outro.
+
+```bash
+curlcmd engagement list                    # engajamentos isolados + contagem de registros
+curlcmd engagement delete cliente-x        # apaga histórico + achados desse engajamento inteiro
+```
+
+> `engagement delete` só apaga o `history.db` isolado (histórico + achados). Se
+> você também usou `--evidence CAMINHO` apontando pra outro lugar, aquele
+> diretório não é tocado — ele foi escolhido por você e pode não ser exclusivo
+> deste engajamento.
+
+**Arquivo de config do engajamento (`--config`).** Repetir `--engagement`/
+`--scope`/`--auth-macro`/`--proxy` em toda invocação (durante um engajamento
+que pode durar semanas) convida a erro de digitação — e como `--engagement`
+é uma string livre casada por igualdade exata, um typo cria silenciosamente
+um segundo engajamento, sem aviso. Um arquivo TOML lido uma vez resolve isso:
+
+```toml
+# engajamento.toml
+[engagement]
+name = "cliente-x"
+scope_file = "scope-cliente-x.txt"
+auth_macro = "login-cliente-x.yaml"
+proxy = "http://127.0.0.1:8080"
+
+[wordlists]
+default_source = "seclists"   # documentado; ainda não aplicado automaticamente
+```
+
+```bash
+curlcmd --config engajamento.toml "https://api.cliente-x.com/x"
+curlcmd report --config engajamento.toml --out relatorio.html
+```
+
+`--config` só preenche o que você **não** digitou nesta chamada — qualquer
+`--engagement`/`--scope`/`--auth-macro`/`--proxy` explícito na linha de
+comando sempre vence sobre o arquivo, não importa a posição de `--config` em
+`argv`. Disponível em toda a superfície que já aceita essas flags (requisição
+normal, `discover`, `bounty-scan`, `validate`, `proxy`, `report`,
+`history`/`replay`/`curl`/`export-history`/`delete-history`/`clear-history`).
 
 ---
 
@@ -463,6 +553,14 @@ curlcmd bounty-scan https://t/page --engagement ENG-2026 --categories xss,sqli,t
 
 O `bounty-scan` consolida anomalias em **candidatos a investigar** ordenados por
 severidade — nunca confirmações. Confirme-os num navegador (abaixo).
+
+**Wordlist essencial embutida.** Rodar `discover` sem `-w`/`--payloads` — antes
+de qualquer `payloads sync` — não recusa mais o comando: usa uma wordlist
+essencial embutida (~385 caminhos comuns: `.env`, `.git/config`, `admin`,
+`wp-admin`, `api/v1`, backups, painéis, etc.) para dar cobertura útil no
+primeiro dia, com um aviso indicando `curlcmd payloads sync seclists` para
+cobertura completa. Uma fonte pedida explicitamente (`-w`/`--payloads`) que
+resolve vazia continua sendo erro — o fallback só entra quando nada foi pedido.
 
 ## 8. Validação por navegador e proxy interceptador
 

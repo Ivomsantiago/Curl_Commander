@@ -62,6 +62,16 @@ function Test-OnPath([string]$dir) {
     return $parts -contains $dir
 }
 
+function Update-CurrentSessionPath {
+    # A registry PATH change (ours, or uv/pipx's own) never propagates to a
+    # process already running — child processes only inherit PATH at launch.
+    # Rebuilding $env:Path from Machine+User here makes `curlcmd` work in the
+    # SAME window that ran the installer, without needing a new terminal.
+    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user    = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = @($machine, $user) -join ';'
+}
+
 function Confirm-Version([string]$exe) {
     try {
         $v = & $exe --version 2>$null
@@ -89,8 +99,9 @@ function Install-WithUv {
     else { uv tool install --force --from $Source $Package }
     uv tool update-shell 2>$null | Out-Null
     Ok 'Instalado via uv tool.'
+    Update-CurrentSessionPath
     if (Have 'curlcmd') { [void](Confirm-Version 'curlcmd'); Invoke-Setup 'curlcmd' }
-    else { Warn 'curlcmd ainda não está no PATH. Abra um novo terminal (uv tool update-shell).' }
+    else { Warn 'curlcmd ainda não está no PATH mesmo após atualizar a sessão atual. Abra um novo terminal.' }
 }
 
 function Install-WithPipx {
@@ -99,8 +110,9 @@ function Install-WithPipx {
     pipx install --force $Source
     pipx ensurepath 2>$null | Out-Null
     Ok 'Instalado via pipx.'
+    Update-CurrentSessionPath
     if (Have 'curlcmd') { [void](Confirm-Version 'curlcmd'); Invoke-Setup 'curlcmd' }
-    else { Warn 'curlcmd ainda não está no PATH. Abra um novo terminal (pipx ensurepath).' }
+    else { Warn 'curlcmd ainda não está no PATH mesmo após atualizar a sessão atual. Abra um novo terminal.' }
 }
 
 function Install-WithVenv {
@@ -124,10 +136,28 @@ function Install-WithVenv {
 
     [void](Confirm-Version $venvExe)
     if (-not (Test-OnPath $ShimDir)) {
-        Warn "$ShimDir não está no seu PATH."
-        Write-Host '  Adicione-o ao PATH do usuário (permanente):'
-        Write-Host "    [Environment]::SetEnvironmentVariable('Path', `"`$env:Path;$ShimDir`", 'User')"
-        Write-Host '  Depois abra um novo terminal.'
+        if (Confirm "Adicionar $ShimDir ao PATH do usuário (permanente)?") {
+            $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+            $parts = @()
+            if ($userPath) { $parts = $userPath -split ';' | Where-Object { $_ -ne '' } }
+            if ($parts -notcontains $ShimDir) {
+                # Idempotency: never append a duplicate entry on a repeat install/update.
+                $newPath = if ($userPath) { "$userPath;$ShimDir" } else { $ShimDir }
+                try {
+                    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+                    Ok 'PATH do usuário atualizado.'
+                } catch {
+                    Warn "Não foi possível gravar o PATH do usuário automaticamente: $_"
+                    Write-Host "  Adicione manualmente: $ShimDir"
+                }
+            }
+        } else {
+            Warn "$ShimDir não está no seu PATH. Rode o instalador de novo para adicioná-lo, ou adicione manualmente."
+        }
+    }
+    Update-CurrentSessionPath
+    if (-not (Have 'curlcmd')) {
+        Warn 'curlcmd ainda não está no PATH da sessão atual (PATH de usuário pode estar truncado). Abra um novo terminal.'
     }
     Invoke-Setup $venvExe
 }

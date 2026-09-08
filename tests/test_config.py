@@ -1,7 +1,5 @@
 """F1.2 tests: platform config dir, env override, legacy migration."""
 
-import importlib
-
 import curlcommander.config as config
 
 
@@ -49,15 +47,28 @@ def test_migrate_is_noop_without_legacy(monkeypatch, tmp_path):
     assert config.migrate_legacy(target=tmp_path / "new") is None
 
 
-def test_reload_respects_override(monkeypatch, tmp_path):
-    monkeypatch.setenv("CURLCOMMANDER_HOME", str(tmp_path / "h"))
-    importlib.reload(config)
-    try:
-        assert config.APP_DIR == tmp_path / "h"
-        assert config.DB_PATH == tmp_path / "h" / "history.db"
-    finally:
-        monkeypatch.delenv("CURLCOMMANDER_HOME", raising=False)
-        importlib.reload(config)
+def test_reload_respects_override(tmp_path):
+    """A fresh process with CURLCOMMANDER_HOME set computes APP_DIR/DB_PATH
+    from it. Checked via a real subprocess rather than importlib.reload():
+    reload() mutates the shared module dict *in place*, so every class/
+    function defined in config.py gets a brand-new identity that no longer
+    matches whatever any other already-imported module captured via
+    `from curlcommander.config import X` before the reload — including
+    curlcommander.cli.runner's own `except InvalidEngagementName` — a subtle,
+    session-wide test-isolation trap a plain try/finally restore cannot fix
+    (it restores the *values* correctly, never the *identities*)."""
+    import json
+    import os
+    import subprocess
+    import sys
+
+    target = tmp_path / "h"
+    env = dict(os.environ, CURLCOMMANDER_HOME=str(target))
+    code = "import json, curlcommander.config as c; print(json.dumps({'app_dir': str(c.APP_DIR), 'db_path': str(c.DB_PATH)}))"
+    result = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True)
+    data = json.loads(result.stdout)
+    assert data["app_dir"] == str(target)
+    assert data["db_path"] == str(target / "history.db")
 
 
 def test_export_json_uses_lf_newlines(tmp_path):

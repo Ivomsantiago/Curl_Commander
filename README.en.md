@@ -125,22 +125,51 @@ and how it was installed. Update with `curlcmd self-update`.
 
 ### Standalone binary (no Python required)
 
-Download `curlcmd` / `curlcmd.exe` for your OS from the
-[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases) page, verify
-the checksum against `SHA256SUMS`, and run it directly:
+Two variants on the
+[Releases](https://github.com/Ivomsantiago/Curl_Commander/releases) page —
+verify the checksum against the published `SHA256SUMS` before running:
+
+- **`curlcmd-<os>`** (lite) — a single file, as always. Browser validators
+  still need Chromium installed separately (see the note below).
+- **`curlcmd-<os>-full.tar.gz`/`.zip`** (item 10.3) — a folder with a real
+  Chromium already bundled; extract and run, browser validators work
+  offline with no extra step. Considerably larger because of that
+  (Chromium alone is 150+ MB).
 
 ```bash
-chmod +x curlcmd && ./curlcmd --version          # Linux/macOS
-.\curlcmd.exe --version                           # Windows (PowerShell)
+chmod +x curlcmd && ./curlcmd --version                     # lite, Linux/macOS
+.\curlcmd.exe --version                                       # lite, Windows (PowerShell)
+
+tar xzf curlcmd-linux-x86_64-full.tar.gz && ./curlcmd/curlcmd --version   # full, Linux/macOS
+# full on Windows: extract the .zip and run curlcmd\curlcmd.exe
 ```
 
-Build it yourself with `pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
-(output in `dist/`). A single-file `curlcmd.pyz` (needs Python, no install) is
-also available via `pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
+Build the lite variant yourself with
+`pip install -e ".[build-exe]" && pyinstaller packaging/curlcmd.spec`
+(output in `dist/curlcmd`). For the full variant, install Chromium into a
+directory and point `PLAYWRIGHT_BROWSERS_PATH` at it before running
+PyInstaller — the spec detects and bundles it automatically:
+
+```bash
+pip install -e ".[build-exe,browser]"
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/pw-browsers"
+python -m playwright install chromium
+pyinstaller packaging/curlcmd.spec   # output in dist/curlcmd/ (a folder)
+```
+
+A single-file `curlcmd.pyz` (needs Python, no install) is also available via
+`pip install -e ".[build-pyz]" && shiv -c curlcmd -o curlcmd.pyz .`.
 
 > **Antivirus note.** PyInstaller binaries occasionally trigger a false positive
 > on Windows Defender/SmartScreen. Verify the published SHA256, or install via
 > `pipx`/`pip` instead if your environment blocks unsigned binaries.
+>
+> **Python-dependent features.** The **lite** standalone binary does not
+> include Chromium/mitmproxy/payloads: browser validators, the intercepting
+> proxy, and wordlist downloads need a Python install (or grab the **full**
+> variant above, which already bundles Chromium). mitmproxy and wordlist
+> downloads still need Python either way. Run `curlcmd doctor` for a
+> diagnosis.
 
 ---
 
@@ -368,6 +397,26 @@ a history table (replay / show-curl / delete).
 
 `{{VAR}}` references in the form are resolved from the environment on send.
 
+Besides Repeater/Intruder/Proxy (see the table above), the TUI also has:
+
+- **Validate** — a form over the validators (`xss`/`cors`/`open-redirect`/
+  `clickjacking`/`csrf`/`ssrf`/`idor`), category-specific fields, the same
+  verdict colours as the CLI (CONFIRMED red, REFLECTED yellow, NOT_VULNERABLE
+  green), and automatic persistence of the finding.
+- **Recon** — a domain → subdomains → live URLs → nuclei-findings-by-severity
+  tree, live-updated as the subfinder→httpx→nuclei pipeline runs; Enter/click
+  on a URL promotes it to the Repeater.
+- **Findings** — a live table of the active engagement's persisted findings,
+  groupable by severity, with a **Generate report** button (calls
+  `core.report` and opens the resulting HTML).
+- **WebSocket** — connect, send messages, and see sent/received in two
+  columns (extra `[ws]`).
+
+A persistent status bar lets you set the active **engagement**, **scope
+file**, and **auth macro** once — the GUI counterpart of the CLI's
+`--config` (section 5) — instead of every tab carrying its own copy of those
+three fields.
+
 ---
 
 ## 5. History storage
@@ -376,6 +425,55 @@ Requests are stored in the OS data dir (see Storage location above) as
 `history.db` (SQLite, `0600` on POSIX). The full
 request is kept as a redacted `config_json` snapshot so replay is lossless;
 schema upgrades run automatically via `PRAGMA user_version`.
+
+**Per-engagement isolation.** Without `--engagement`, everything lands in the
+shared `history.db` (ad-hoc use). With `--engagement NAME` — on any command
+that already accepts the flag (a normal request, `validate`, `bounty-scan`,
+`proxy`, `report`, `history`/`replay`/`curl`/`export-history`/`delete-history`/
+`clear-history`) — history **and** persisted findings are isolated into
+`<data dir>/engagements/NAME/history.db`, one file per client/engagement. This
+is a confidentiality boundary, not just organization: at the end of an
+engagement you can delete one client's data without touching anyone else's.
+
+```bash
+curlcmd engagement list                    # isolated engagements + row counts
+curlcmd engagement delete client-x         # deletes that engagement's whole history.db (history + findings)
+```
+
+> `engagement delete` only removes the isolated `history.db` (history +
+> findings). If you also used `--evidence PATH` pointing somewhere else, that
+> directory is untouched — you chose it, and it may not be exclusive to this
+> engagement.
+
+**Engagement config file (`--config`).** Repeating `--engagement`/`--scope`/
+`--auth-macro`/`--proxy` on every invocation — over an engagement that can
+run for weeks — invites typos, and since `--engagement` is a free-text
+string matched by exact equality, a typo silently creates a second
+engagement with no warning. A TOML file read once fixes that:
+
+```toml
+# engagement.toml
+[engagement]
+name = "client-x"
+scope_file = "scope-client-x.txt"
+auth_macro = "login-client-x.yaml"
+proxy = "http://127.0.0.1:8080"
+
+[wordlists]
+default_source = "seclists"   # documented; not auto-applied yet
+```
+
+```bash
+curlcmd --config engagement.toml "https://api.client-x.com/x"
+curlcmd report --config engagement.toml --out report.html
+```
+
+`--config` only fills in what you did **not** type on this invocation — any
+explicit `--engagement`/`--scope`/`--auth-macro`/`--proxy` on the command
+line always wins over the file, regardless of `--config`'s position in
+`argv`. Available wherever those flags already are (a normal request,
+`discover`, `bounty-scan`, `validate`, `proxy`, `report`,
+`history`/`replay`/`curl`/`export-history`/`delete-history`/`clear-history`).
 
 ---
 
@@ -403,6 +501,14 @@ curlcmd bounty-scan https://t/page --engagement ENG-2026 --categories xss,sqli,t
 
 `bounty-scan` consolidates anomalies into severity-ranked **candidates to
 investigate** — never confirmations. Confirm them in a browser (below).
+
+**Embedded essentials wordlist.** Running `discover` with no `-w`/`--payloads`
+at all — before any `payloads sync` — no longer refuses: it uses an embedded
+essentials wordlist (~385 common paths: `.env`, `.git/config`, `admin`,
+`wp-admin`, `api/v1`, backups, panels, etc.) for useful day-1 coverage, with a
+message pointing at `curlcmd payloads sync seclists` for full coverage. A
+source explicitly requested (`-w`/`--payloads`) that resolves to nothing is
+still an error — the fallback only kicks in when nothing was requested.
 
 ## 7. Browser validation & intercepting proxy
 
