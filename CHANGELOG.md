@@ -16,6 +16,25 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+## [5.0.3] - 2026-09-08 — install-smoke-venv-windows: elimina o profile do PowerShell da equação
+
+### Corrigido
+
+* **A varredura de disco da 5.0.2 confirmou que uv/pipx não existem como
+  arquivo em nenhum diretório do `Path`** — mesmo assim `Get-Command`
+  continuava resolvendo `pipx`. Como as duas correções anteriores (chave
+  `Path`, depois varredura direta) já tinham eliminado qualquer explicação
+  ligada a PATH, a origem só pode ser algo que o PowerShell resolve à
+  revelia do PATH: uma function/alias definida no profile (a imagem do
+  runner Windows é fortemente customizada, com dezenas de toolchains) ou um
+  redirecionamento via registro (App Paths). `shell: pwsh` no GitHub Actions
+  **não** passa `-NoProfile`, então o profile é carregado em todo step. Os
+  três steps do job (`Hide`, `Confirm`, `Run the installer`) agora rodam com
+  `-NoProfile` explícito — o mesmo `-NoProfile` que o step final já usava
+  para o processo novo que valida `curlcmd --version`. O `Confirm` também
+  passou a imprimir `CommandType`/`Source` antes de falhar, para não
+  precisar de mais uma rodada de log caso a causa seja outra.
+
 ## [5.0.2] - 2026-09-08 — Corrige de vez o install-smoke-venv-windows
 
 ### Corrigido

@@ -184,20 +184,26 @@ jobs:
           python-version: "3.12"
 
       - name: Hide uv/pipx from PATH (force the Install-WithVenv branch)
-        shell: pwsh
+        shell: pwsh -NoProfile -Command ". '{0}'"
         run: |
-          # Get-Command -All (even with every match's parent dir excluded, and
-          # even after fixing the "Path" vs "PATH" $GITHUB_ENV key) still left
-          # pipx reachable: it only ever reported the copy bundled into the
-          # hostedtoolcache Python that actions/setup-python just activated,
-          # never the runner image's own pre-installed
-          # C:\Users\<user>\AppData\Roaming\Python\Python3XX\Scripts\pipx.exe
-          # — present in the real PATH the whole time (confirmed by dumping
-          # the next step's env), so this isn't a PATH-ordering or
-          # $GITHUB_ENV-propagation issue, it's Get-Command -All itself not
-          # enumerating every match on this runner. Don't trust command
-          # resolution at all: check every PATH directory on disk directly
-          # for a uv/pipx executable and drop only those directories.
+          # Two rounds of PATH-only fixes (excluding every Get-Command -All
+          # match; fixing the "Path" vs "PATH" $GITHUB_ENV key) both verifiably
+          # took effect — the next step's dumped Path genuinely had the
+          # targeted directory removed — and pipx was STILL "resolvable".
+          # A direct Test-Path filesystem scan of every single Path directory
+          # (this step, previously) found no uv/pipx executable anywhere
+          # beyond the one already excluded, which rules out PATH entirely:
+          # nothing on disk in any Path directory is named uv/pipx. The only
+          # remaining way Get-Command resolves a bare name despite that is a
+          # PowerShell profile-defined function/alias (this runner image's
+          # default, heavily customized profile, loaded because `shell: pwsh`
+          # does not pass -NoProfile) or an App Paths registry redirect —
+          # both invisible to $env:Path and to a directory scan. -NoProfile
+          # on every pwsh step in this job (matching the -NoProfile already
+          # used below when actually invoking curlcmd in a fresh process)
+          # removes the profile-function possibility outright; the file-scan
+          # PATH exclusion stays as defense in depth for the real,
+          # PATH-resolved copy.
           $targets = 'uv', 'pipx'
           $exts = ($env:PATHEXT -split ';') + ''
           $exclude = [System.Collections.Generic.List[string]]::new()
@@ -235,14 +241,22 @@ jobs:
           }
 
       - name: Confirm uv/pipx are unreachable
-        shell: pwsh
+        shell: pwsh -NoProfile -Command ". '{0}'"
         run: |
-          if (Get-Command uv -ErrorAction SilentlyContinue) { throw 'uv is still resolvable; the venv branch would not be exercised.' }
-          if (Get-Command pipx -ErrorAction SilentlyContinue) { throw 'pipx is still resolvable; the venv branch would not be exercised.' }
+          # If this still throws, the -NoProfile fix was wrong too: dump
+          # exactly what Get-Command resolved to (CommandType/Source) instead
+          # of leaving another opaque "is still resolvable" one-liner.
+          foreach ($name in 'uv', 'pipx') {
+            $found = Get-Command $name -All -ErrorAction SilentlyContinue
+            if ($found) {
+              $found | Format-List Name, CommandType, Source, Definition | Out-String | Write-Host
+              throw "$name is still resolvable; the venv branch would not be exercised."
+            }
+          }
           Write-Host 'uv/pipx confirmed absent — Install-WithVenv will run.'
 
       - name: Run the installer (forces Install-WithVenv)
-        shell: pwsh
+        shell: pwsh -NoProfile -Command ". '{0}'"
         run: |
           $env:CURLCMD_SOURCE = $PWD.Path
           .\scripts\install.ps1 -Yes
