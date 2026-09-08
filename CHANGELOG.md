@@ -16,6 +16,35 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+## [5.1.0] - 2026-09-08 — Corrige detecção de Chromium/features no binário "full"
+
+### Corrigido
+
+* **`build-binary (full)` falhava no smoke test de Chromium bundled** (`curlcmd
+  doctor` não reportava o Chromium empacotado com as variáveis de ambiente
+  ausentes, o cenário real de um usuário que baixa o binário standalone).
+  Duas causas reais no código, não na pipeline:
+  - `features.available()` usava só `importlib.util.find_spec()`, que pode
+    retornar `None` para um módulo que um `import` de verdade resolve sem
+    problema — comportamento já observado com `playwright` dentro do binário
+    onedir "full" do PyInstaller. Sem essa linha, `doctor` nem chegava a
+    imprimir a checagem de Chromium. Agora cai para um `import` real quando
+    `find_spec` diz que não está disponível.
+  - `packaging/rthook_chromium.py::bundled_browsers_path` só olhava
+    `<base_dir>/pw-browsers`. O layout onedir padrão do PyInstaller 6+
+    coloca os arquivos coletados (`COLLECT`, incluindo o `Tree()` do
+    Chromium) em `_internal/`, mas `sys._MEIPASS` nem sempre concorda com
+    esse split entre versões — agora verifica `<base_dir>/pw-browsers`,
+    `<base_dir>/_internal/pw-browsers` e o diretório do próprio executável,
+    cobrindo os layouts possíveis sem depender de fixar uma versão exata do
+    PyInstaller.
+  - `release.yml`: o smoke test agora imprime a saída completa do `doctor` e
+    a árvore de `dist/curlcmd` quando falha, em vez de um erro opaco.
+* **`curlcmd --version` reportava `4.0.0`** — `curlcommander/__init__.py`
+  tinha `__version__` hardcoded, dessincronizado do `pyproject.toml` desde
+  antes desta série de correções (nenhum dos releases 5.0.0–5.0.4 tocou
+  nesse arquivo). Atualizado para acompanhar a versão real do pacote.
+
 ## [5.0.4] - 2026-09-08 — install-smoke-venv-windows: causa raiz real encontrada e corrigida
 
 ### Corrigido

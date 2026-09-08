@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "curlcommander"
-version = "5.0.4"
+version = "5.1.0"
 description = "Terminal HTTP request builder, curl generator and API/AppSec testing tool"
 readme = "README.md"
 license = { file = "LICENSE" }

@@ -68,11 +68,33 @@ class FeatureUnavailable(RuntimeError):
     """Raised when an optional feature is used without its extra installed."""
 
 
+def _importable(module: str) -> bool:
+    """True if ``module`` can be imported.
+
+    Tries :func:`importlib.util.find_spec` first (cheap, doesn't execute the
+    module) and falls back to an actual import attempt. PyInstaller's frozen
+    importer has been observed to make ``find_spec`` return None for a module
+    that a real ``import`` resolves fine (seen with ``playwright`` in the
+    onedir "full" release binary) — the fallback keeps `doctor`/`setup` from
+    reporting an installed extra as missing in that case.
+    """
+    try:
+        if importlib.util.find_spec(module) is not None:
+            return True
+    except (ImportError, ValueError):
+        pass
+    try:
+        importlib.import_module(module)
+        return True
+    except ImportError:
+        return False
+
+
 def available(name: str) -> bool:
     feat = FEATURES.get(name)
     if feat is None:
         return False
-    return all(importlib.util.find_spec(m) is not None for m in feat.modules)
+    return all(_importable(m) for m in feat.modules)
 
 
 def is_frozen() -> bool:

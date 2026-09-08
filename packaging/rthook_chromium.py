@@ -24,11 +24,32 @@ from pathlib import Path
 
 
 def bundled_browsers_path(frozen: bool, base_dir: str | Path | None) -> Path | None:
-    """The bundled ``pw-browsers`` dir, or None if not frozen / not bundled."""
+    """The bundled ``pw-browsers`` dir, or None if not frozen / not bundled.
+
+    Checked in more than one place because PyInstaller's onedir layout isn't
+    one fixed shape across versions: since PyInstaller 6.0, non-executable
+    collected files (COLLECT's ``a.binaries``/``a.datas``/our own
+    ``Tree(browsers_path, prefix="pw-browsers")`` in curlcmd.spec) default to
+    a ``_internal`` subdirectory, but ``sys._MEIPASS`` and
+    ``sys.executable``'s own directory don't consistently agree on which side
+    of that split they report across PyInstaller releases. Checking
+    ``base_dir``, ``base_dir/_internal`` and the executable's own directory
+    covers every layout actually seen without needing to pin an exact
+    PyInstaller version.
+    """
     if not frozen or not base_dir:
         return None
-    candidate = Path(base_dir) / "pw-browsers"
-    return candidate if candidate.is_dir() else None
+    candidates = [
+        Path(base_dir) / "pw-browsers",
+        Path(base_dir) / "_internal" / "pw-browsers",
+    ]
+    exe_dir = os.path.dirname(sys.executable)
+    if exe_dir:
+        candidates.append(Path(exe_dir) / "pw-browsers")
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def apply() -> None:

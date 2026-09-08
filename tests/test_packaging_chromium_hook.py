@@ -44,6 +44,31 @@ def test_bundled_browsers_path_none_when_no_base_dir():
     assert hook.bundled_browsers_path(True, None) is None
 
 
+def test_bundled_browsers_path_found_under_internal_subdir(tmp_path):
+    """PyInstaller 6+'s default onedir layout collects non-exe files
+    (COLLECT's a.binaries/a.datas/our Tree()) into a `_internal` subdirectory
+    -- `_MEIPASS` doesn't consistently agree with that split across
+    PyInstaller versions, so this has to be checked explicitly rather than
+    assumed away."""
+    hook = _load_hook_module()
+    bundled_dir = tmp_path / "_internal" / "pw-browsers"
+    bundled_dir.mkdir(parents=True)
+    assert hook.bundled_browsers_path(True, tmp_path) == bundled_dir
+
+
+def test_bundled_browsers_path_found_next_to_executable(tmp_path, monkeypatch):
+    """Falls back to sys.executable's own directory when the bundle isn't
+    under base_dir or base_dir/_internal."""
+    hook = _load_hook_module()
+    exe_dir = tmp_path / "exe_dir"
+    exe_dir.mkdir()
+    (exe_dir / "pw-browsers").mkdir()
+    monkeypatch.setattr(sys, "executable", str(exe_dir / "curlcmd"))
+    other_base = tmp_path / "unrelated_base"
+    other_base.mkdir()
+    assert hook.bundled_browsers_path(True, other_base) == exe_dir / "pw-browsers"
+
+
 def test_apply_sets_env_var_when_bundle_present(tmp_path, monkeypatch):
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
     (tmp_path / "pw-browsers").mkdir()

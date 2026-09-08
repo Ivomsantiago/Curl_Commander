@@ -19,6 +19,19 @@ def test_available_matches_import(monkeypatch):
     assert features.available("does-not-exist") is False
 
 
+def test_importable_falls_back_to_real_import_when_find_spec_lies(monkeypatch):
+    """PyInstaller's frozen importer has been observed to make find_spec
+    return None for a module a real import resolves fine (seen with
+    `playwright` in the onedir "full" release binary) -- _importable must not
+    trust a negative find_spec result on its own."""
+    monkeypatch.setattr(features.importlib.util, "find_spec", lambda name: None)
+    assert features._importable("os") is True
+
+
+def test_importable_false_when_neither_finds_nor_imports():
+    assert features._importable("definitely_not_a_real_module_xyz") is False
+
+
 def test_missing_message_is_portuguese_and_actionable():
     msg = features.missing_message("proxy")
     assert "precisa do extra" in msg

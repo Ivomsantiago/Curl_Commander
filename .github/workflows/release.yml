@@ -79,8 +79,14 @@ jobs:
         shell: bash
         run: |
           unset PLAYWRIGHT_BROWSERS_PATH CURLCOMMANDER_CHROMIUM
-          "$BIN" doctor | grep -i "Chromium" | grep -qi "pw-browsers\|_internal" || {
-            echo "::error::Bundled Chromium not detected by doctor with env vars unset"; exit 1; }
+          doctor_out="$("$BIN" doctor)"
+          echo "$doctor_out"
+          if ! echo "$doctor_out" | grep -i "Chromium" | grep -qi "pw-browsers\|_internal"; then
+            echo "::error::Bundled Chromium not detected by doctor with env vars unset"
+            echo "--- dist/curlcmd tree (depth 3) ---"
+            find dist/curlcmd -maxdepth 3 | sort
+            exit 1
+          fi
           "$BIN" validate clickjacking "https://example.com" --engagement ci-smoke --timeout 20
 
       - name: Stage asset + checksum
