@@ -473,6 +473,14 @@ curlcmd bounty-scan https://t/page --engagement ENG-2026 --categories xss,sqli,t
 `bounty-scan` consolidates anomalies into severity-ranked **candidates to
 investigate** — never confirmations. Confirm them in a browser (below).
 
+**Embedded essentials wordlist.** Running `discover` with no `-w`/`--payloads`
+at all — before any `payloads sync` — no longer refuses: it uses an embedded
+essentials wordlist (~385 common paths: `.env`, `.git/config`, `admin`,
+`wp-admin`, `api/v1`, backups, panels, etc.) for useful day-1 coverage, with a
+message pointing at `curlcmd payloads sync seclists` for full coverage. A
+source explicitly requested (`-w`/`--payloads`) that resolves to nothing is
+still an error — the fallback only kicks in when nothing was requested.
+
 ## 7. Browser validation & intercepting proxy
 
 Heavy deps are optional extras that degrade with a clear message:

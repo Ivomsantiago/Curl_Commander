@@ -96,6 +96,65 @@ def test_cli_discover_with_payloads(monkeypatch):
 
 
 @respx.mock
+def test_cli_discover_falls_back_to_embedded_essentials_when_nothing_given(capsys):
+    """10.2: `discover` with no -w/--payloads at all degrades to the embedded
+    discovery-essentials tier instead of refusing outright, so it works day-1
+    without a `payloads sync` first."""
+    respx.get(url__regex=r"https://t/.*").mock(
+        side_effect=lambda r: httpx.Response(200 if r.url.path == "/admin" else 404)
+    )
+    rc = runner.run_cli(
+        _ns(
+            subcommand="discover",
+            url="https://t",
+            wordlists=[],
+            payloads=[],
+            extensions=None,
+            recurse=0,
+            concurrency=5,
+            rate=0.0,
+            mc=None,
+            fc="404",
+            ms=None,
+            fs=None,
+            mr=None,
+            scope=None,
+            no_verify=False,
+            timeout=5.0,
+        )
+    )
+    assert rc == runner.EXIT_OK
+    assert "essencial" in capsys.readouterr().out.lower()
+
+
+def test_cli_discover_still_errors_on_an_explicit_but_empty_source(monkeypatch):
+    """An explicitly requested -w/--payloads that resolves to nothing is a
+    real error, never silently swapped for the essentials fallback."""
+    monkeypatch.setattr("curlcommander.core.payload_catalog.load_category", lambda cat, all_sources=False: [])
+    rc = runner.run_cli(
+        _ns(
+            subcommand="discover",
+            url="https://t",
+            wordlists=[],
+            payloads=["traversal"],
+            extensions=None,
+            recurse=0,
+            concurrency=5,
+            rate=0.0,
+            mc=None,
+            fc="404",
+            ms=None,
+            fs=None,
+            mr=None,
+            scope=None,
+            no_verify=False,
+            timeout=5.0,
+        )
+    )
+    assert rc == runner.EXIT_USAGE
+
+
+@respx.mock
 def test_cli_bounty_scan_requires_engagement():
     rc = runner.run_cli(
         _ns(

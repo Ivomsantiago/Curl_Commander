@@ -20,6 +20,16 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Wordlist essencial embutida para `discover` (item 10.2).** Rodar
+  `discover` sem `-w`/`--payloads` antes de qualquer `payloads sync` recusava
+  o comando; agora usa `curlcommander/data/payloads/discovery-essentials.txt`
+  (~385 caminhos comuns curados pelo próprio projeto — `.env`, `.git/config`,
+  `admin`, `wp-admin`, `api/v1`, backups, painéis administrativos etc.) como
+  padrão, com aviso indicando `curlcmd payloads sync seclists` para cobertura
+  completa. Uma fonte explicitamente pedida que resolve vazia continua
+  recusando (o fallback só entra quando nada foi pedido). Reaproveita o
+  mecanismo já existente de listas embutidas (`core/payloads.py`), sem novo
+  subsistema.
 * **Cinco novas abas na GUI (item 9): Validar, Recon, Achados, WebSocket +
   barra de status.** A TUI ganhou paridade com a CLI para os fluxos que só
   existiam via linha de comando:

@@ -543,15 +543,29 @@ def _print_fuzz_table(results, title: str) -> None:
     _console.print(table)
 
 
+_ESSENTIALS = "discovery-essentials"
+
+
 def _run_discover(args) -> int:
     if getattr(args, "scope", None):
         scope.enforce(args.url, scope.load_scope(args.scope))
+    wordlists = getattr(args, "wordlists", []) or []
+    payloads_cats = getattr(args, "payloads", []) or []
     try:
         words: list[str] = []
-        for spec in getattr(args, "wordlists", []) or []:
+        for spec in wordlists:
             words += payload_catalog.resolve_spec(spec)
-        for cat in getattr(args, "payloads", []) or []:
+        for cat in payloads_cats:
             words += payload_catalog.load_category(cat)
+        # Day-1 default (10.2): no -w/--payloads at all -> the embedded
+        # essentials tier instead of refusing outright. A source explicitly
+        # requested but empty/unsynced is still an error, not silently swapped.
+        if not wordlists and not payloads_cats:
+            words = payload_catalog.resolve_spec(_ESSENTIALS)
+            _console.print(
+                "[dim]Nenhum -w/--payloads informado — usando a wordlist essencial embutida "
+                f"({len(words)} entradas). Rode `curlcmd payloads sync seclists` para cobertura completa.[/dim]"
+            )
     except payload_catalog.CatalogError as exc:
         _console.print(f"[red]Error:[/red] {exc}")
         return EXIT_USAGE
