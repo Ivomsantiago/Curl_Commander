@@ -1,0 +1,10 @@
+Release v4.0.0 - Major Feature Release
+
+This release includes:
+- Complete GUI overhaul with Validation, Recon, Findings, and WebSocket tabs
+- Persistent status bar for engagement/scope/auth management
+- Per-engagement data isolation and single TOML config file
+- Optional Chromium bundling in standalone releases
+- Security and stability improvements
+
+Release workflow triggered at: 2026-09-08T22:17:50Z
