@@ -396,6 +396,36 @@ curlcmd engagement delete client-x         # deletes that engagement's whole his
 > directory is untouched — you chose it, and it may not be exclusive to this
 > engagement.
 
+**Engagement config file (`--config`).** Repeating `--engagement`/`--scope`/
+`--auth-macro`/`--proxy` on every invocation — over an engagement that can
+run for weeks — invites typos, and since `--engagement` is a free-text
+string matched by exact equality, a typo silently creates a second
+engagement with no warning. A TOML file read once fixes that:
+
+```toml
+# engagement.toml
+[engagement]
+name = "client-x"
+scope_file = "scope-client-x.txt"
+auth_macro = "login-client-x.yaml"
+proxy = "http://127.0.0.1:8080"
+
+[wordlists]
+default_source = "seclists"   # documented; not auto-applied yet
+```
+
+```bash
+curlcmd --config engagement.toml "https://api.client-x.com/x"
+curlcmd report --config engagement.toml --out report.html
+```
+
+`--config` only fills in what you did **not** type on this invocation — any
+explicit `--engagement`/`--scope`/`--auth-macro`/`--proxy` on the command
+line always wins over the file, regardless of `--config`'s position in
+`argv`. Available wherever those flags already are (a normal request,
+`discover`, `bounty-scan`, `validate`, `proxy`, `report`,
+`history`/`replay`/`curl`/`export-history`/`delete-history`/`clear-history`).
+
 ---
 
 ## 6. Bug bounty — payloads → fuzz → discover

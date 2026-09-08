@@ -20,6 +20,20 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Arquivo único de config de engajamento (`--config`, item 8.4).** Antes,
+  um engajamento que dura semanas exigia repetir `--engagement`/`--scope`/
+  `--auth-macro`/`--proxy` em toda invocação — e como `--engagement` é uma
+  string livre casada por igualdade exata, um typo criava silenciosamente um
+  segundo engajamento sem nenhum aviso. Novo `curlcommander/core/
+  engagement_config.py` lê um TOML (stdlib `tomllib`, sem dependência nova)
+  com `[engagement] name/scope_file/auth_macro/proxy` uma vez; `--config
+  ARQUIVO.TOML` preenche essas flags só onde a chamada atual as deixou em
+  branco — qualquer flag explícita na linha de comando sempre vence sobre o
+  arquivo. Disponível em toda a superfície que já aceita essas flags
+  (requisição normal, `discover`, `bounty-scan`, `validate`, `proxy`,
+  `report`, `history`/`replay`/`curl`/`export-history`/`delete-history`/
+  `clear-history`). `report --engagement` deixa de ser obrigatório na flag
+  (pode vir só do `--config`), mas continua obrigatório em algum dos dois.
 * **Isolamento de dados por engajamento (`curlcmd engagement`, item 8.1).**
   Antes, todo teste rodado — de qualquer cliente, em qualquer data — vivia no
   mesmo `history.db` global; um problema de confidencialidade real (LGPD/NDA

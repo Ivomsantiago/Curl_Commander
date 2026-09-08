@@ -30,6 +30,7 @@ from curlcommander.core.discovery import (
     discover,
     severity_of,
 )
+from curlcommander.core.engagement_config import EngagementConfigError, apply_defaults, load_engagement_config
 from curlcommander.core.evidence import compose_raw_response, save_evidence
 from curlcommander.core.fuzzer import FuzzFilters, find_markers, markers_for, run_fuzz
 from curlcommander.core.headers import HeaderList
@@ -64,6 +65,13 @@ def run_cli(args) -> int:
     setup_logging(getattr(args, "log_file", None), getattr(args, "log_level", None))
     repo: HistoryRepo | None = None
     try:
+        # A single --config file (8.4) fills in --engagement/--scope/
+        # --auth-macro/--proxy wherever the user left them unset on this
+        # invocation; anything actually typed on the command line still wins.
+        config_path = getattr(args, "config", None)
+        if config_path:
+            apply_defaults(args, load_engagement_config(config_path))
+
         # An isolated per-engagement history.db (8.1) when --engagement is
         # given, else the shared ad-hoc DB_PATH — same confidentiality
         # boundary the --engagement-gated validation_results/evidence have.
@@ -131,6 +139,7 @@ def run_cli(args) -> int:
         FileNotFoundError,
         AuthMacroError,
         InvalidEngagementName,
+        EngagementConfigError,
     ) as exc:
         _console.print(f"[red bold]Error:[/red bold] {exc}")
         return EXIT_USAGE
@@ -722,6 +731,10 @@ def _run_report(args) -> int:
     from curlcommander.core.report import build_report
     from curlcommander.storage.history_repo import HistoryRepo
     from curlcommander.storage.validation_repo import ValidationRepo
+
+    if not getattr(args, "engagement", None):
+        _console.print("[red]Refused:[/red] report requires --engagement LABEL (ou defina via --config).")
+        return EXIT_USAGE
 
     db = db_path_for(args.engagement, DB_PATH)
     repo = ValidationRepo(db)

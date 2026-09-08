@@ -457,6 +457,36 @@ curlcmd engagement delete cliente-x        # apaga histórico + achados desse en
 > diretório não é tocado — ele foi escolhido por você e pode não ser exclusivo
 > deste engajamento.
 
+**Arquivo de config do engajamento (`--config`).** Repetir `--engagement`/
+`--scope`/`--auth-macro`/`--proxy` em toda invocação (durante um engajamento
+que pode durar semanas) convida a erro de digitação — e como `--engagement`
+é uma string livre casada por igualdade exata, um typo cria silenciosamente
+um segundo engajamento, sem aviso. Um arquivo TOML lido uma vez resolve isso:
+
+```toml
+# engajamento.toml
+[engagement]
+name = "cliente-x"
+scope_file = "scope-cliente-x.txt"
+auth_macro = "login-cliente-x.yaml"
+proxy = "http://127.0.0.1:8080"
+
+[wordlists]
+default_source = "seclists"   # documentado; ainda não aplicado automaticamente
+```
+
+```bash
+curlcmd --config engajamento.toml "https://api.cliente-x.com/x"
+curlcmd report --config engajamento.toml --out relatorio.html
+```
+
+`--config` só preenche o que você **não** digitou nesta chamada — qualquer
+`--engagement`/`--scope`/`--auth-macro`/`--proxy` explícito na linha de
+comando sempre vence sobre o arquivo, não importa a posição de `--config` em
+`argv`. Disponível em toda a superfície que já aceita essas flags (requisição
+normal, `discover`, `bounty-scan`, `validate`, `proxy`, `report`,
+`history`/`replay`/`curl`/`export-history`/`delete-history`/`clear-history`).
+
 ---
 
 ## 7. Bug bounty — payloads → fuzz → discover
