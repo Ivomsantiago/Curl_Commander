@@ -96,12 +96,23 @@ def test_cli_discover_with_payloads(monkeypatch):
 
 
 @respx.mock
-def test_cli_discover_falls_back_to_embedded_essentials_when_nothing_given(capsys):
+def test_cli_discover_falls_back_to_embedded_essentials_when_nothing_given(capsys, monkeypatch):
     """10.2: `discover` with no -w/--payloads at all degrades to the embedded
     discovery-essentials tier instead of refusing outright, so it works day-1
-    without a `payloads sync` first."""
+    without a `payloads sync` first.
+
+    Stubs the real ~385-entry list down to a couple of words — like the
+    sibling test_cli_discover_with_payloads does for its category — so this
+    stays a fast unit test of the fallback *decision*, not a live fuzz run
+    over the whole embedded wordlist (that many real httpx.AsyncClient
+    constructions was slow enough to trip the 60s CI timeout on Windows).
+    """
     respx.get(url__regex=r"https://t/.*").mock(
         side_effect=lambda r: httpx.Response(200 if r.url.path == "/admin" else 404)
+    )
+    monkeypatch.setattr(
+        "curlcommander.core.payload_catalog.resolve_spec",
+        lambda spec: ["admin", "x"] if spec == "discovery-essentials" else [],
     )
     rc = runner.run_cli(
         _ns(
