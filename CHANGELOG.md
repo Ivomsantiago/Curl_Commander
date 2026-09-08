@@ -16,7 +16,7 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
-## [Não lançado]
+## [5.0.0] - 2026-09-08 — GUI completa, engajamento isolado, config TOML e orquestração de recon
 
 ### Adicionado
 
