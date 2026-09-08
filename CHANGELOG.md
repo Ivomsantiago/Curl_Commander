@@ -70,6 +70,21 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   `_substitute_variables` própria, duplicando `redaction.reveal_text` (já
   usado por `auth_macro.py` e por `--reveal`). Removida a duplicata; todo
   `{{VAR}}` no projeto resolve pela mesma função agora.
+* **`scripts/install.ps1` não atualizava o PATH de verdade (item 11).** No
+  branch `Install-WithVenv` (uv e pipx ausentes — o caso mais comum num
+  Windows limpo), o aviso de "adicione ao PATH" era só `Write-Host`:
+  `[Environment]::SetEnvironmentVariable` nunca era chamado, então `curlcmd`
+  ficava permanentemente ausente do PATH após `irm | iex`. Agora o instalador
+  pergunta e grava o PATH de verdade (idempotente — não duplica entrada num
+  reinstall) nos três métodos (`uv`/`pipx`/venv), e uma nova
+  `Update-CurrentSessionPath` atualiza `$env:Path` do processo atual logo
+  após qualquer mudança de PATH, então `curlcmd` já funciona na MESMA janela
+  que rodou o instalador, sem precisar abrir um terminal novo. Novo job de CI
+  `install-smoke-venv-windows` força a ausência de `uv`/`pipx` (garantindo que
+  o branch com o bug seja realmente exercitado, o que o `install-smoke`
+  existente não garantia), verifica a persistência real do PATH abrindo um
+  processo novo com o PATH reconstruído só do registro (não do `$env:Path` já
+  corrigido em sessão), e confirma que reinstalar não duplica a entrada.
 
 ## [4.0.0] - 2026-09-07 — Auth macro, IDOR, SSRF OOB, WebSocket, importers e relatório HTML
 

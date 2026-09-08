@@ -166,6 +166,93 @@ jobs:
         shell: bash
         run: curlcmd setup --yes
 
+  # Item 11: the plain install.ps1 (`Install-WithVenv`) branch fired only
+  # when uv/pipx are both absent, and the existing install-smoke (windows)
+  # step never forces that — a runner that happens to ship uv/pipx would
+  # silently skip exercising the one branch that had the PATH bug. This job
+  # forces that branch, then verifies the PATH persisted (not just the
+  # current process's already-patched $env:Path) and that a second install
+  # never duplicates the PATH entry.
+  install-smoke-venv-windows:
+    needs: lint
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Hide uv/pipx from PATH (force the Install-WithVenv branch)
+        shell: pwsh
+        run: |
+          $exclude = @()
+          foreach ($name in 'uv', 'pipx') {
+            $cmd = Get-Command $name -ErrorAction SilentlyContinue
+            if ($cmd) { $exclude += (Split-Path $cmd.Source -Parent) }
+          }
+          if ($exclude.Count -gt 0) {
+            $parts = $env:Path -split ';' | Where-Object { $exclude -notcontains $_ }
+            $newPath = $parts -join ';'
+            "PATH=$newPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Confirm uv/pipx are unreachable
+        shell: pwsh
+        run: |
+          if (Get-Command uv -ErrorAction SilentlyContinue) { throw 'uv is still resolvable; the venv branch would not be exercised.' }
+          if (Get-Command pipx -ErrorAction SilentlyContinue) { throw 'pipx is still resolvable; the venv branch would not be exercised.' }
+          Write-Host 'uv/pipx confirmed absent — Install-WithVenv will run.'
+
+      - name: Run the installer (forces Install-WithVenv)
+        shell: pwsh
+        run: |
+          $env:CURLCMD_SOURCE = $PWD.Path
+          .\scripts\install.ps1 -Yes
+
+      - name: curlcmd resolves in a brand-new process (real PATH persistence, not session refresh)
+        shell: pwsh
+        run: |
+          # Rebuild PATH purely from the persistent Machine+User registry values,
+          # ignoring this process's own $env:Path (already patched in-session by
+          # Update-CurrentSessionPath) — this is what a freshly opened terminal
+          # actually sees, and is the scenario the original bug report hit.
+          $freshPath = @(
+            [Environment]::GetEnvironmentVariable('Path', 'Machine'),
+            [Environment]::GetEnvironmentVariable('Path', 'User')
+          ) -join ';'
+
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName = 'pwsh'
+          $psi.Arguments = '-NoProfile -Command "curlcmd --version"'
+          $psi.EnvironmentVariables['Path'] = $freshPath
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.UseShellExecute = $false
+
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          $proc.WaitForExit()
+          $stdout = $proc.StandardOutput.ReadToEnd()
+          $stderr = $proc.StandardError.ReadToEnd()
+          Write-Host $stdout
+          if ($proc.ExitCode -ne 0) {
+            throw "curlcmd --version failed in a fresh-PATH process (exit $($proc.ExitCode)): $stderr"
+          }
+
+      - name: Re-run the installer — PATH entry must not duplicate
+        shell: pwsh
+        run: |
+          $shimDir = Join-Path $env:LOCALAPPDATA 'CurlCommander\bin'
+          $env:CURLCMD_SOURCE = $PWD.Path
+          .\scripts\install.ps1 -Yes
+
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          $count = ($userPath -split ';' | Where-Object { $_ -eq $shimDir }).Count
+          Write-Host "PATH entries for $shimDir : $count"
+          if ($count -ne 1) {
+            throw "Expected exactly one PATH entry for $shimDir after a second install, found $count."
+          }
+
   markdown-links:
     needs: lint
     runs-on: ubuntu-latest
