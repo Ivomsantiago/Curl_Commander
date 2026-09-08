@@ -2,7 +2,7 @@
 
 import json
 import os
-import stat
+import sys
 import types
 from pathlib import Path
 
@@ -33,31 +33,29 @@ def test_require_unknown_tool_raises():
         require("not-a-real-tool")
 
 
-# --- run_and_stream over a fake binary --------------------------------------
+# --- run_and_stream over a real subprocess ----------------------------------
+#
+# Uses `sys.executable -c <script>` as the "binary" — the one command
+# guaranteed to be a real, directly runnable executable on every platform
+# Python supports (no shebang/chmod/.bat tricks, which don't port to Windows).
 
 
-def _fake_binary(tmp_path: Path, lines: list[str]) -> Path:
-    """A tiny executable script that prints each line to stdout, then exits."""
-    script = tmp_path / "fake-tool"
-    body = "#!/usr/bin/env python3\n" + "\n".join(f"print({ln!r})" for ln in lines) + "\n"
-    script.write_text(body, encoding="utf-8")
-    script.chmod(script.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
-    return script
+def _print_lines_script(lines: list[str]) -> str:
+    return "; ".join(f"print({ln!r})" for ln in lines)
 
 
 @pytest.mark.asyncio
-async def test_run_and_stream_parses_json_lines_and_skips_bad_ones(tmp_path, monkeypatch):
-    script = _fake_binary(
-        tmp_path,
+async def test_run_and_stream_parses_json_lines_and_skips_bad_ones(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda name: sys.executable)
+    script = _print_lines_script(
         [
             json.dumps({"host": "a.example.com"}),
             "not json at all",  # must be skipped, not raised
             json.dumps("a bare json string"),  # valid JSON but not a dict -> skipped
             json.dumps({"host": "b.example.com"}),
-        ],
+        ]
     )
-    monkeypatch.setattr("shutil.which", lambda name: str(script))
-    records = [r async for r in run_and_stream("subfinder", ["-d", "example.com"])]
+    records = [r async for r in run_and_stream("subfinder", ["-c", script])]
     assert records == [{"host": "a.example.com"}, {"host": "b.example.com"}]
 
 
@@ -91,6 +89,11 @@ def test_filter_scope_urls():
 
 
 # --- per-tool workflows -------------------------------------------------------
+#
+# The subprocess mechanism itself is covered above (a real, portable
+# subprocess); these test argv construction and scope handling, so they mock
+# scan.run_and_stream rather than needing a fake binary matching each tool's
+# fixed argv shape.
 
 
 @pytest.mark.asyncio
@@ -101,11 +104,19 @@ async def test_subfinder_refuses_out_of_scope_domain():
 
 
 @pytest.mark.asyncio
-async def test_subfinder_runs_when_in_scope(tmp_path, monkeypatch):
-    script = _fake_binary(tmp_path, [json.dumps({"host": "api.target.com"})])
-    monkeypatch.setattr("shutil.which", lambda name: str(script))
+async def test_subfinder_runs_when_in_scope(monkeypatch):
+    captured = {}
+
+    async def fake_run_and_stream(name, args):
+        captured["name"] = name
+        captured["args"] = args
+        yield {"host": "api.target.com"}
+
+    monkeypatch.setattr(scan, "run_and_stream", fake_run_and_stream)
     records = [r async for r in scan.subfinder("target.com", ["target.com", "*.target.com"])]
     assert records == [{"host": "api.target.com"}]
+    assert captured["name"] == "subfinder"
+    assert captured["args"] == ["-d", "target.com", "-json", "-silent"]
 
 
 @pytest.mark.asyncio
@@ -206,8 +217,11 @@ def test_cli_recon_subfinder_refused_out_of_scope(tmp_path):
 
 
 def test_cli_recon_subfinder_writes_out_file(tmp_path, monkeypatch, capsys):
-    script = _fake_binary(tmp_path, [json.dumps({"host": "a.target.com"}), json.dumps({"host": "b.target.com"})])
-    monkeypatch.setattr("shutil.which", lambda name: str(script))
+    async def fake_subfinder(domain, scope_entries=None):
+        yield {"host": "a.target.com"}
+        yield {"host": "b.target.com"}
+
+    monkeypatch.setattr(scan, "subfinder", fake_subfinder)
     out = tmp_path / "subs.jsonl"
     rc = runner.run_cli(_recon_ns(out=str(out)))
     assert rc == runner.EXIT_OK
@@ -218,8 +232,10 @@ def test_cli_recon_subfinder_writes_out_file(tmp_path, monkeypatch, capsys):
 
 
 def test_cli_recon_httpx_reports_dropped_out_of_scope(tmp_path, monkeypatch, capsys):
-    script = _fake_binary(tmp_path, [json.dumps({"url": "http://a.target.com", "status_code": 200})])
-    monkeypatch.setattr("shutil.which", lambda name: str(script))
+    async def fake_httpx_probe(hosts, scope_entries=None):
+        yield {"url": "http://a.target.com", "status_code": 200}
+
+    monkeypatch.setattr(scan, "httpx_probe", fake_httpx_probe)
     list_file = tmp_path / "hosts.txt"
     list_file.write_text("a.target.com\nevil.com\n")
     scopefile = tmp_path / "scope.txt"
