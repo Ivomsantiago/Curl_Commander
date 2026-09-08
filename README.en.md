@@ -368,6 +368,26 @@ a history table (replay / show-curl / delete).
 
 `{{VAR}}` references in the form are resolved from the environment on send.
 
+Besides Repeater/Intruder/Proxy (see the table above), the TUI also has:
+
+- **Validate** — a form over the validators (`xss`/`cors`/`open-redirect`/
+  `clickjacking`/`csrf`/`ssrf`/`idor`), category-specific fields, the same
+  verdict colours as the CLI (CONFIRMED red, REFLECTED yellow, NOT_VULNERABLE
+  green), and automatic persistence of the finding.
+- **Recon** — a domain → subdomains → live URLs → nuclei-findings-by-severity
+  tree, live-updated as the subfinder→httpx→nuclei pipeline runs; Enter/click
+  on a URL promotes it to the Repeater.
+- **Findings** — a live table of the active engagement's persisted findings,
+  groupable by severity, with a **Generate report** button (calls
+  `core.report` and opens the resulting HTML).
+- **WebSocket** — connect, send messages, and see sent/received in two
+  columns (extra `[ws]`).
+
+A persistent status bar lets you set the active **engagement**, **scope
+file**, and **auth macro** once — the GUI counterpart of the CLI's
+`--config` (section 5) — instead of every tab carrying its own copy of those
+three fields.
+
 ---
 
 ## 5. History storage

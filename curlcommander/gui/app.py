@@ -9,12 +9,17 @@ from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.http_client import send
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.gui.curl_panel import CurlPanel
+from curlcommander.gui.findings_panel import FindingsPanel
 from curlcommander.gui.history_panel import HistoryPanel
 from curlcommander.gui.intruder_panel import IntruderPanel
 from curlcommander.gui.proxy_panel import ProxyPanel
+from curlcommander.gui.recon_panel import ReconPanel
 from curlcommander.gui.repeater_panel import RepeaterPanel
 from curlcommander.gui.request_panel import RequestPanel
 from curlcommander.gui.response_panel import ResponsePanel
+from curlcommander.gui.status_bar import StatusBar
+from curlcommander.gui.validate_panel import ValidatePanel
+from curlcommander.gui.ws_panel import WSPanel
 from curlcommander.storage.history_repo import HistoryRepo
 
 
@@ -67,7 +72,14 @@ class CurlCommanderApp(App):
     def __init__(self, db_path=DB_PATH, **kwargs) -> None:
         super().__init__(**kwargs)
         # One connection reused for the whole session, closed on exit (1.11).
+        self.db_path = db_path
         self.repo = HistoryRepo(db_path)
+        # Shared session state (9.4): set once in the status bar, read by
+        # every tab instead of each one carrying its own engagement/scope/
+        # auth-macro fields — the GUI counterpart of --config (8.4).
+        self.engagement: str = ""
+        self.scope_entries: list[str] = []
+        self.auth_macro = None
 
     def on_unmount(self) -> None:
         self.repo.close()
@@ -93,6 +105,15 @@ class CurlCommanderApp(App):
                 yield IntruderPanel(id="intruder-panel")
             with TabPane("Proxy", id="tab-proxy"):
                 yield ProxyPanel(id="proxy-panel")
+            with TabPane("Validar", id="tab-validate"):
+                yield ValidatePanel(id="validate-panel")
+            with TabPane("Recon", id="tab-recon"):
+                yield ReconPanel(id="recon-panel")
+            with TabPane("Achados", id="tab-findings"):
+                yield FindingsPanel(id="findings-panel")
+            with TabPane("WebSocket", id="tab-ws"):
+                yield WSPanel(id="ws-panel")
+        yield StatusBar(id="status-bar")
         yield Footer()
 
     # ------------------------------------------------------------------
@@ -122,6 +143,10 @@ class CurlCommanderApp(App):
         self._switch_to("tab-intruder")
 
     def on_intruder_panel_promote_to_repeater(self, event: IntruderPanel.PromoteToRepeater) -> None:
+        self.query_one(RepeaterPanel).add_request(event.config)
+        self._switch_to("tab-repeater")
+
+    def on_recon_panel_promote_to_repeater(self, event: ReconPanel.PromoteToRepeater) -> None:
         self.query_one(RepeaterPanel).add_request(event.config)
         self._switch_to("tab-repeater")
 

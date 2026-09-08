@@ -20,6 +20,33 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Cinco novas abas na GUI (item 9): Validar, Recon, Achados, WebSocket +
+  barra de status.** A TUI ganhou paridade com a CLI para os fluxos que só
+  existiam via linha de comando:
+  - **Validar** — formulário sobre `core.validators.*` (xss/cors/
+    open-redirect/clickjacking/csrf/ssrf/idor), campos por categoria, mesmas
+    cores de veredito da CLI, e persistência automática via o novo
+    `core/validation_store.py` (extraído de `cli/runner.py::_persist_validation`
+    para que CLI e GUI compartilhem o mesmo caminho de redação — nunca dois
+    lugares redigindo evidência de formas que podem divergir).
+  - **Recon** — árvore domínio→subdomínios→URLs vivas→achados do nuclei por
+    severidade, alimentada ao vivo por `core.recon.scan` (subfinder→httpx→
+    nuclei); promove uma URL para o Repeater.
+  - **Achados** — tabela ao vivo de `validation_results` do engajamento
+    ativo, agrupável por severidade, com botão para gerar e abrir o relatório
+    HTML (`core.report.build_report`).
+  - **WebSocket** — cliente interativo (extra `[ws]`) com colunas separadas
+    de enviado/recebido, sobre `core.ws_client.WSClient`.
+  - **Barra de status** — define engajamento/escopo/macro de login uma vez
+    para todas as abas, em vez de cada uma carregar sua própria cópia dos
+    três campos (o equivalente em GUI do `--config` do item 8.4). Corrigida
+    durante o desenvolvimento: como sibling não-dockado composto entre o
+    `TabbedContent` (altura `auto`) e o `Footer` (dockado), a barra de status
+    e o rodapé disputavam a mesma linha e nenhum aparecia — um container
+    `auto` cujo filho pede `1fr` reivindica toda a tela restante. Corrigido
+    fixando a barra de status com `dock: bottom`, com teste de regressão
+    (`tests/test_gui.py::test_status_bar_stays_within_the_visible_screen`)
+    checando que a região renderizada cabe na tela.
 * **Arquivo único de config de engajamento (`--config`, item 8.4).** Antes,
   um engajamento que dura semanas exigia repetir `--engagement`/`--scope`/
   `--auth-macro`/`--proxy` em toda invocação — e como `--engagement` é uma

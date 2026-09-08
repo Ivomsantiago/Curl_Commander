@@ -706,24 +706,12 @@ def _persist_idor_finding(args, finding) -> None:
 def _persist_validation(engagement: str | None, result) -> None:
     """Store a validated finding so `curlcmd report` can aggregate it later.
 
-    Evidence is redacted before it ever touches disk — the same "redact by
-    default" rule the request history follows — since a validator's evidence
-    can carry a captured raw request or DOM snapshot with real credentials in
-    it (see core.redaction.redact_evidence).
+    Thin wrapper over core.validation_store.persist_validation, which also
+    backs the GUI's Validate tab (item 9) — one redaction path for both.
     """
-    if not engagement:
-        return
-    import dataclasses
+    from curlcommander.core.validation_store import persist_validation
 
-    from curlcommander.core.redaction import redact_evidence
-    from curlcommander.storage.validation_repo import ValidationRepo
-
-    result = dataclasses.replace(result, evidence=redact_evidence(result.evidence))
-    repo = ValidationRepo(db_path_for(engagement, DB_PATH))
-    try:
-        repo.save(engagement, result, datetime.now().isoformat(timespec="seconds"))
-    finally:
-        repo.close()
+    persist_validation(engagement, result, DB_PATH)
 
 
 def _run_report(args) -> int:

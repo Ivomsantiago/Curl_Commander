@@ -412,6 +412,23 @@ A TUI é organizada em abas (um "Burp na TUI"):
 - **Proxy** — inicia o proxy interceptador (extra `[proxy]`), lista o tráfego
   capturado ao vivo (fora do escopo fica esmaecido, não some) e envia qualquer
   captura para o Repeater ou o Intruder.
+- **Validar** — formulário sobre os validadores (`xss`/`cors`/`open-redirect`/
+  `clickjacking`/`csrf`/`ssrf`/`idor`), campos específicos por categoria,
+  cores de veredito iguais às da CLI (CONFIRMED vermelho, REFLECTED amarelo,
+  NOT_VULNERABLE verde) e persistência automática do achado.
+- **Recon** — árvore domínio → subdomínios → URLs vivas → achados do nuclei
+  por severidade, atualizada ao vivo conforme o pipeline
+  subfinder→httpx→nuclei roda; Enter/clique numa URL promove para o Repeater.
+- **Achados** — tabela ao vivo dos achados persistidos do engajamento ativo,
+  agrupável por severidade, com botão **Gerar relatório** (chama `core.report`
+  e abre o HTML resultante).
+- **WebSocket** — conecta, envia mensagens e mostra enviado/recebido em duas
+  colunas (extra `[ws]`).
+
+Um rodapé fixo (barra de status) permite definir o **engajamento**, o
+**arquivo de escopo** e a **macro de login** ativos uma vez — como o
+`--config` da CLI (seção 8.1), toda aba lê esse mesmo estado em vez de
+carregar sua própria cópia dos três campos.
 
 O visualizador de resposta das abas novas tem Pretty/Raw/Headers/Cookies, busca
 com contagem navegável ("2/7"), diff entre reenvios e o botão **Analisar**
