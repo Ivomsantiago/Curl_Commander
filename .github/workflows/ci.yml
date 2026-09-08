@@ -186,10 +186,16 @@ jobs:
       - name: Hide uv/pipx from PATH (force the Install-WithVenv branch)
         shell: pwsh
         run: |
+          # -All: uv/pipx can be resolvable from more than one PATH directory
+          # at once on the hosted runner image (e.g. a pipx_bin shim dir AND a
+          # user Scripts dir both containing it) — excluding only the single
+          # highest-precedence match (Get-Command's default) left the other
+          # one reachable and the "Confirm unreachable" step below still
+          # found it.
           $exclude = @()
           foreach ($name in 'uv', 'pipx') {
-            $cmd = Get-Command $name -ErrorAction SilentlyContinue
-            if ($cmd) { $exclude += (Split-Path $cmd.Source -Parent) }
+            $cmds = Get-Command $name -All -ErrorAction SilentlyContinue
+            foreach ($cmd in $cmds) { $exclude += (Split-Path $cmd.Source -Parent) }
           }
           if ($exclude.Count -gt 0) {
             $parts = $env:Path -split ';' | Where-Object { $exclude -notcontains $_ }
