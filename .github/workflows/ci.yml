@@ -210,7 +210,17 @@ jobs:
             # $GITHUB_ENV parsing, so the override never took effect (confirmed:
             # the next step's PATH dump was byte-for-byte the unmodified one).
             # Add-Content writes the raw string with no such wrapping.
-            Add-Content -Path $env:GITHUB_ENV -Value "PATH=$newPath"
+            #
+            # Key must be "Path", not "PATH": the runner's env context is
+            # keyed by the exact name inherited from the OS, which on Windows
+            # is "Path". Writing "PATH" to $GITHUB_ENV creates a second,
+            # distinct entry alongside the untouched original "Path" instead
+            # of replacing it, so the next step's process still resolves
+            # commands against the old, unfiltered value — reproduced exactly
+            # by the previous two "fixes" (all-matches exclusion, then
+            # Add-Content) both failing identically on the real Windows
+            # runner, since neither touched this mismatch.
+            Add-Content -Path $env:GITHUB_ENV -Value "Path=$newPath"
           }
 
       - name: Confirm uv/pipx are unreachable

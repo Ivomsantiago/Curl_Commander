@@ -16,6 +16,21 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+## [5.0.1] - 2026-09-08 — Corrige CI do install-smoke-venv-windows
+
+### Corrigido
+
+* **`install-smoke-venv-windows` (ci.yml): a exclusão de uv/pipx do PATH não
+  tinha efeito no Windows.** O step escrevia `PATH=$newPath` em `$GITHUB_ENV`,
+  mas a variável do sistema no Windows chama-se `Path` — escrever `PATH`
+  (maiúsculo) cria uma entrada nova e distinta ao lado da `Path` original em
+  vez de substituí-la, então o processo do step seguinte ainda resolvia
+  `pipx`/`uv` pela `Path` antiga, não filtrada. As duas tentativas anteriores
+  (excluir todos os matches do `Get-Command -All`, depois trocar `Out-File`
+  por `Add-Content`) corrigiram problemas reais mas não este, e por isso o
+  job continuava falhando de forma idêntica. Corrigido escrevendo a chave com
+  a grafia exata `Path`.
+
 ## [5.0.0] - 2026-09-08 — GUI completa, engajamento isolado, config TOML e orquestração de recon
 
 ### Adicionado
