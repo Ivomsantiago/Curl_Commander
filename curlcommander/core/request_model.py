@@ -102,3 +102,4 @@ class HistoryEntry:
     response_body: bytes = b""
     response_content_type: str = ""
     origin: str = ""  # provenance tag (e.g. "openapi:spec.yaml"); "" = live request
+    engagement: str = ""  # --engagement label, if the request was fired under one

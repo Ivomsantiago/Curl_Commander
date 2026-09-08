@@ -56,6 +56,21 @@ def test_classify_low_similarity_200_is_not_confirmed():
     assert _classify("101", 200, 200, 0.84, 0.85).verdict == SUSPECT
 
 
+def test_classify_denial_that_leaks_as_body_is_not_auto_blocked():
+    # B is denied (403) but the body is still structurally identical to A's
+    # real content (e.g. a debug error page that echoes the object) — that is
+    # not a clean block, so it must not be auto-classified as BLOCKED.
+    f = _classify("101", 200, 403, 0.99, 0.85)
+    assert f.verdict == SUSPECT
+
+
+def test_classify_denial_with_no_prior_success_is_still_blocked():
+    # Both identities hit a login wall (A never even got a 200) — nothing of
+    # A's to leak, so a shared denial body is still a clean BLOCKED.
+    f = _classify("101", 401, 401, 1.0, 0.85)
+    assert f.verdict == BLOCKED
+
+
 # --- end-to-end A/B correlation over HTTP ---------------------------------
 
 

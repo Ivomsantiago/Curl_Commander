@@ -98,6 +98,7 @@ async def test_validate_ssrf_http_is_confirmed(monkeypatch):
     res = await validate_ssrf("https://t/x?u=FUZZ_OOB", client)
     assert res.verdict == CONFIRMED and "HTTP" in res.detail
     assert res.evidence["protocol"] == "http"
+    assert res.evidence["severity"] == "high"  # full outbound connection: strongest impact
 
 
 @respx.mock
@@ -111,6 +112,13 @@ async def test_validate_ssrf_dns_only_is_distinct(monkeypatch):
     monkeypatch.setattr(client, "wait_for", fake_wait)
     res = await validate_ssrf("https://t/x?u=FUZZ_OOB", client)
     assert res.verdict == CONFIRMED and "DNS" in res.detail  # not collapsed with HTTP
+    # Distinct instance severity (report.py's per-evidence override), even
+    # though the verdict itself is CONFIRMED for both — a resolve-only SSRF
+    # is a real but weaker finding than a full HTTP connection.
+    assert res.evidence["severity"] == "medium"
+    from curlcommander.core.report import report_severity
+
+    assert report_severity("ssrf", res.evidence) == "medium"
 
 
 @respx.mock

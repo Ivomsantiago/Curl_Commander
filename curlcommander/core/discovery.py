@@ -91,16 +91,23 @@ async def discover(
 
 # --- bounty-scan ----------------------------------------------------------
 
-# Rough severity ranking for consolidating candidates.
+# Single source of truth for severity ranking, shared by bounty-scan
+# candidates AND the engagement report (core/report.py) so a category never
+# ranks differently depending on which caller asks.
 _SEVERITY = {
     "sqli": "high",
     "cmdi": "high",
     "ssti": "high",
+    "idor": "high",
     "traversal": "medium",
     "lfi": "medium",
     "ssrf": "medium",
     "xss": "medium",
+    "csrf": "medium",
+    "cors": "medium",
     "redirect": "low",
+    "open-redirect": "low",
+    "clickjacking": "low",
 }
 
 

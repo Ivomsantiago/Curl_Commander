@@ -1,36 +1,28 @@
 """Engagement report builder (item 6): validated findings -> single HTML.
 
-Aggregates every persisted :class:`ValidationResult` for an engagement, groups
-them by severity, and renders one self-contained HTML file (inline CSS, no
+Aggregates every persisted :class:`ValidationResult` for an engagement (which
+now also includes bounty-scan candidates, see ``core.validators.base.CANDIDATE``)
+plus the plain request :class:`HistoryEntry` rows fired under it, groups
+findings by severity, and renders one self-contained HTML file (inline CSS, no
 external assets). Each finding carries a description, endpoint, severity, an
 explanation, the payload, copy-paste repro (a ``curl`` built from the endpoint),
 the captured evidence, and remediation guidance.
 
-Everything user/target-derived is redacted (``redaction.redact_config``) and
-HTML-escaped before it enters the document, so a report is safe to share.
+Everything user/target-derived is redacted (``redaction.redact_config`` /
+``redact_evidence``) and HTML-escaped before it enters the document, so a
+report is safe to share.
 """
 
 from __future__ import annotations
 
 import html
-import re
 from dataclasses import dataclass
 
 from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.discovery import severity_of
-from curlcommander.core.redaction import redact_config
-from curlcommander.core.request_model import RequestConfig
+from curlcommander.core.redaction import redact_config, redact_evidence, redact_url_query
+from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.storage.validation_repo import StoredValidation
-
-# Validator categories that discovery._SEVERITY doesn't rank get a home here.
-_EXTRA_SEVERITY = {
-    "idor": "high",
-    "csrf": "medium",
-    "cors": "medium",
-    "clickjacking": "low",
-    "open-redirect": "low",
-    "redirect": "low",
-}
 
 _EXPLANATION = {
     "xss": "Entrada refletida/armazenada é executada como script no navegador da vítima.",
@@ -68,52 +60,54 @@ class Finding:
     evidence: dict[str, object]
 
 
-def report_severity(category: str) -> str:
-    base = severity_of(category)
-    if base != "low":
-        return base
-    return _EXTRA_SEVERITY.get(category, "low")
-
-
-# Query-parameter names whose value is a credential to mask in a shared report.
-_SECRET_PARAM = re.compile(
-    r"(?i)\b(token|access_token|refresh_token|api[_-]?key|apikey|key|secret|password|passwd|pwd|auth|session|sig|signature)$"
-)
-
-
-def _redact_url_query(url: str) -> str:
-    """Mask credential-looking query values. ``redact_config`` leaves the URL
-    untouched, so the report does this extra pass before anything is rendered."""
-    base, sep, query = url.partition("?")
-    if not sep:
-        return url
-    parts = []
-    for pair in query.split("&"):
-        name, eq, _value = pair.partition("=")
-        if eq and _SECRET_PARAM.search(name):
-            parts.append(f"{name}=REDACTED")
-        else:
-            parts.append(pair)
-    return base + sep + "&".join(parts)
+def report_severity(category: str, evidence: dict[str, object] | None = None) -> str:
+    """Severity for a finding: ``discovery.severity_of`` is the single source
+    of truth for the category, but a validator may know its OWN instance is
+    weaker or stronger than the category default (e.g. SSRF that only
+    resolved DNS vs. one that opened a full HTTP connection) and say so via
+    an explicit ``evidence["severity"]`` override.
+    """
+    if evidence:
+        override = evidence.get("severity")
+        if override in _SEVERITY_ORDER:
+            return str(override)
+    return severity_of(category)
 
 
 def _to_finding(sv: StoredValidation) -> Finding:
     r = sv.result
-    safe = redact_config(RequestConfig(method="GET", url=_redact_url_query(r.url)), {})
+    safe = redact_config(RequestConfig(method="GET", url=redact_url_query(r.url)), {})
+    # Defense in depth: evidence is already redacted at persistence time
+    # (cli/runner.py::_persist_validation), but the report re-applies it in
+    # case a row ever reaches here through another path.
+    evidence = redact_evidence(dict(r.evidence))
     return Finding(
         category=r.category,
-        severity=report_severity(r.category),
+        severity=report_severity(r.category, evidence),
         verdict=r.verdict,
         url=safe.url,
         detail=r.detail,
         payload=r.payload,
         curl=build_curl(safe),
-        evidence=dict(r.evidence),
+        evidence=evidence,
     )
 
 
-def build_report(engagement: str, stored: list[StoredValidation]) -> str:
-    """Render the full HTML report for an engagement."""
+def build_report(
+    engagement: str,
+    stored: list[StoredValidation],
+    history: list[HistoryEntry] | None = None,
+) -> str:
+    """Render the full HTML report for an engagement.
+
+    ``stored`` covers every persisted :class:`ValidationResult` — validator
+    findings AND bounty-scan candidates (verdict ``CANDIDATE``, which lands in
+    the non-conclusive section below, matching bounty-scan's own "candidates
+    to investigate, never confirmations" stance). ``history`` is the plain
+    request log for the engagement (``--engagement`` on a normal request),
+    included as an appendix so the report also shows everything that was
+    touched, not just what triggered a finding.
+    """
     confirmed = [_to_finding(s) for s in stored if s.result.verdict == "CONFIRMED"]
     others = [_to_finding(s) for s in stored if s.result.verdict != "CONFIRMED"]
 
@@ -132,6 +126,8 @@ def build_report(engagement: str, stored: list[StoredValidation]) -> str:
         parts.extend(_finding_html(f, i + 1) for i, f in enumerate(items))
     if others:
         parts.append(_other_section(others))
+    if history:
+        parts.append(_history_section(history))
     parts.append(_FOOT)
     return "\n".join(parts)
 
@@ -175,6 +171,29 @@ def _other_section(others: list[Finding]) -> str:
         "<h2>Não conclusivos / negativos</h2>"
         "<table class='others'><thead><tr><th>Categoria</th><th>Veredito</th>"
         f"<th>Endpoint</th><th>Detalhe</th></tr></thead><tbody>{rows}</tbody></table>"
+    )
+
+
+def _history_section(history: list[HistoryEntry]) -> str:
+    """Appendix: every plain request fired under the engagement, findings or not.
+
+    Rows already went through `redact_config` at persistence time (unless the
+    analyst ran with `--no-redact`); this re-redacts as defense in depth so
+    the report never depends on that having happened correctly upstream.
+    """
+    rows = []
+    for e in history:
+        safe = redact_config(e.request, {})
+        status = str(e.status_code) if e.status_code is not None else "—"
+        rows.append(
+            f"<tr><td>{html.escape(e.timestamp)}</td><td>{html.escape(e.request.method)}</td>"
+            f"<td><code>{html.escape(redact_url_query(safe.url))}</code></td><td>{status}</td></tr>"
+        )
+    return (
+        f"<h2>Requisições do engajamento ({len(history)})</h2>"
+        "<p class='meta'>Histórico completo enviado com este --engagement, não apenas os achados acima.</p>"
+        "<table class='others'><thead><tr><th>Quando</th><th>Método</th>"
+        f"<th>URL</th><th>Status</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     )
 
 
