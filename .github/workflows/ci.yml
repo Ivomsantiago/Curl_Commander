@@ -183,69 +183,23 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Hide uv/pipx from PATH (force the Install-WithVenv branch)
-        shell: pwsh -NoProfile -Command ". '{0}'"
-        run: |
-          # Two rounds of PATH-only fixes (excluding every Get-Command -All
-          # match; fixing the "Path" vs "PATH" $GITHUB_ENV key) both verifiably
-          # took effect — the next step's dumped Path genuinely had the
-          # targeted directory removed — and pipx was STILL "resolvable".
-          # A direct Test-Path filesystem scan of every single Path directory
-          # (this step, previously) found no uv/pipx executable anywhere
-          # beyond the one already excluded, which rules out PATH entirely:
-          # nothing on disk in any Path directory is named uv/pipx. The only
-          # remaining way Get-Command resolves a bare name despite that is a
-          # PowerShell profile-defined function/alias (this runner image's
-          # default, heavily customized profile, loaded because `shell: pwsh`
-          # does not pass -NoProfile) or an App Paths registry redirect —
-          # both invisible to $env:Path and to a directory scan. -NoProfile
-          # on every pwsh step in this job (matching the -NoProfile already
-          # used below when actually invoking curlcmd in a fresh process)
-          # removes the profile-function possibility outright; the file-scan
-          # PATH exclusion stays as defense in depth for the real,
-          # PATH-resolved copy.
-          $targets = 'uv', 'pipx'
-          $exts = ($env:PATHEXT -split ';') + ''
-          $exclude = [System.Collections.Generic.List[string]]::new()
-          foreach ($dir in ($env:Path -split ';')) {
-            $trimmed = $dir.TrimEnd('\')
-            if (-not $trimmed) { continue }
-            foreach ($name in $targets) {
-              foreach ($ext in $exts) {
-                if (Test-Path -LiteralPath (Join-Path $trimmed "$name$ext") -PathType Leaf) {
-                  $exclude.Add($dir)
-                  break
-                }
-              }
-              if ($exclude.Contains($dir)) { break }
-            }
-          }
-          Write-Host "Excluding from PATH: $exclude"
-          if ($exclude.Count -gt 0) {
-            $parts = $env:Path -split ';' | Where-Object { -not $exclude.Contains($_) }
-            $newPath = $parts -join ';'
-            Write-Host "New PATH length: $($newPath.Length) chars"
-            # Add-Content, not Out-File: Out-File pipes the string through
-            # PowerShell's formatting/output engine, which can word-wrap a
-            # line at the console buffer width (Actions runners often report
-            # a narrow non-interactive width) — for a PATH-length value that
-            # silently split "PATH=<value>" across two lines and corrupted
-            # $GITHUB_ENV parsing, so the override never took effect.
-            # Add-Content writes the raw string with no such wrapping.
-            #
-            # Key must be "Path", not "PATH": the runner's env context is
-            # keyed by the exact name inherited from the OS, which on Windows
-            # is "Path". Writing "PATH" creates a second, distinct entry
-            # alongside the untouched original instead of replacing it.
-            Add-Content -Path $env:GITHUB_ENV -Value "Path=$newPath"
-          }
-
       - name: Confirm uv/pipx are unreachable
         shell: pwsh -NoProfile -Command ". '{0}'"
         run: |
-          # If this still throws, the -NoProfile fix was wrong too: dump
-          # exactly what Get-Command resolved to (CommandType/Source) instead
-          # of leaving another opaque "is still resolvable" one-liner.
+          # Real root cause (confirmed from the actual runner log, not a
+          # guess): GitHub Actions re-prepends every GITHUB_PATH addition
+          # (actions/setup-python registers its own Scripts directory that
+          # way) to the Path handed to EVERY subsequent step, for the rest of
+          # the job, unconditionally — silently undoing a "Path=" override
+          # written to $GITHUB_ENV by an earlier step. A prior attempt did
+          # exactly that (compute the exclusion in one step, propagate via
+          # $GITHUB_ENV) and Get-Command kept resolving pipx.exe from the
+          # exact hostedtoolcache Scripts directory that override had
+          # supposedly removed. The exclusion has to be redone in-process, in
+          # every step that needs it, which is what hide-uv-pipx.ps1 does —
+          # dot-source it, don't try to inherit its effect from a previous
+          # step.
+          . .\.github\scripts\hide-uv-pipx.ps1
           foreach ($name in 'uv', 'pipx') {
             $found = Get-Command $name -All -ErrorAction SilentlyContinue
             if ($found) {
@@ -258,6 +212,12 @@ jobs:
       - name: Run the installer (forces Install-WithVenv)
         shell: pwsh -NoProfile -Command ". '{0}'"
         run: |
+          # Same in-process exclusion as the Confirm step above, and for the
+          # same reason: this is a brand-new process too, so whatever the
+          # previous step did to its own $env:Path is already gone here,
+          # replaced by the runner's own Path (GITHUB_PATH-additions
+          # included) for this step.
+          . .\.github\scripts\hide-uv-pipx.ps1
           $env:CURLCMD_SOURCE = $PWD.Path
           .\scripts\install.ps1 -Yes
 

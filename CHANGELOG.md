@@ -16,6 +16,28 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+## [5.0.4] - 2026-09-08 — install-smoke-venv-windows: causa raiz real encontrada e corrigida
+
+### Corrigido
+
+* **Causa raiz confirmada via log real do runner (`CommandType`/`Source`
+  adicionados na 5.0.3): o GitHub Actions reaplica (prepend) toda entrada de
+  `GITHUB_PATH` — é assim que `actions/setup-python` registra sua própria
+  pasta `Scripts` — no `Path` de **todo step seguinte**, incondicionalmente,
+  pelo resto do job.** Isso desfazia silenciosamente qualquer `Path=`
+  escrito em `$GITHUB_ENV` por um step anterior — exatamente o que as
+  correções 5.0.1/5.0.2/5.0.3 tentavam fazer. O log mostrou `pipx.exe`
+  resolvido a partir do exato diretório hostedtoolcache que já tínhamos
+  "removido". Não era PATH order, não era `Path` vs `PATH`, não era profile
+  do PowerShell — era a própria arquitetura de cross-step do Actions.
+  Removido o step separado "Hide uv/pipx from PATH"; a exclusão (varredura
+  de disco por `uv`/`pipx` em cada diretório do `Path`, criada na 5.0.2) foi
+  extraída para `.github/scripts/hide-uv-pipx.ps1` e agora é feita **dentro
+  do mesmo processo** de cada step que precisa da checagem (`Confirm` e
+  `Run the installer`), via dot-source — sem depender de propagação entre
+  steps, que nunca poderia funcionar dado o comportamento documentado do
+  `GITHUB_PATH`.
+
 ## [5.0.3] - 2026-09-08 — install-smoke-venv-windows: elimina o profile do PowerShell da equação
 
 ### Corrigido
