@@ -34,8 +34,8 @@ class HistoryRepo:
             """
             INSERT INTO history
                 (ts, method, url, headers, params, body, body_type, auth_type,
-                 status, duration, curl_cmd, config_json, origin)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, duration, curl_cmd, config_json, origin, engagement)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.timestamp,
@@ -51,6 +51,7 @@ class HistoryRepo:
                 entry.curl_cmd,
                 json.dumps(entry.request.to_dict()),
                 entry.origin,
+                entry.engagement,
             ),
         )
         self._conn.commit()
@@ -58,6 +59,11 @@ class HistoryRepo:
 
     def load(self, limit: int = HISTORY_LIMIT) -> list[HistoryEntry]:
         rows = self._conn.execute("SELECT * FROM history ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [self._row_to_entry(row) for row in rows]
+
+    def load_by_engagement(self, engagement: str) -> list[HistoryEntry]:
+        """Requests fired with ``--engagement engagement`` (for `curlcmd report`)."""
+        rows = self._conn.execute("SELECT * FROM history WHERE engagement = ? ORDER BY id", (engagement,)).fetchall()
         return [self._row_to_entry(row) for row in rows]
 
     def get_by_id(self, id: int) -> HistoryEntry | None:
@@ -117,6 +123,7 @@ class HistoryRepo:
                 auth_type=row["auth_type"] or "none",
             )
         origin = row["origin"] if "origin" in row.keys() else None
+        engagement = row["engagement"] if "engagement" in row.keys() else None
         return HistoryEntry(
             id=row["id"],
             timestamp=row["ts"],
@@ -125,4 +132,5 @@ class HistoryRepo:
             duration_ms=row["duration"] or 0.0,
             curl_cmd=row["curl_cmd"] or "",
             origin=origin or "",
+            engagement=engagement or "",
         )

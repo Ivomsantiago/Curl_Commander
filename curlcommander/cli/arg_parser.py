@@ -334,6 +334,34 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     ws_fuzz.add_argument("--mr", metavar="REGEX", help="Match por regex no corpo da resposta")
     ws_fuzz.add_argument("--timeout", type=float, default=10.0, metavar="SEG")
 
+    # recon (external tool orchestration: subfinder/httpx/nuclei/katana)
+    recon = subparsers.add_parser(
+        "recon", help="Orquestra subfinder/httpx/nuclei/katana (binários externos, não instalados pelo curlcmd)"
+    )
+    recon_sub = recon.add_subparsers(dest="recon_cmd", required=True)
+
+    recon_sf = recon_sub.add_parser("subfinder", help="Enumeração de subdomínios")
+    recon_sf.add_argument("-d", "--domain", required=True, metavar="DOMÍNIO")
+    recon_sf.add_argument("--scope", metavar="CAMINHO", help="Recusa o domínio se estiver fora do escopo")
+    recon_sf.add_argument("--out", metavar="ARQUIVO", help="Grava cada registro como uma linha JSON (JSONL)")
+
+    recon_hx = recon_sub.add_parser("httpx", help="Probe de hosts vivos (status, título, stack)")
+    recon_hx.add_argument("-l", "--list", required=True, metavar="ARQUIVO", help="Um host/URL por linha")
+    recon_hx.add_argument("--scope", metavar="CAMINHO", help="Só sonda hosts em escopo; descarta o resto")
+    recon_hx.add_argument("--out", metavar="ARQUIVO", help="Grava cada registro como uma linha JSON (JSONL)")
+
+    recon_nu = recon_sub.add_parser("nuclei", help="Templates de vulnerabilidade")
+    recon_nu.add_argument("-l", "--list", required=True, metavar="ARQUIVO", help="Uma URL por linha")
+    recon_nu.add_argument("--severity", metavar="LISTA", help="ex.: medium,high,critical")
+    recon_nu.add_argument("--include-raw", action="store_true", help="Inclui request/response crus (-include-rr)")
+    recon_nu.add_argument("--scope", metavar="CAMINHO", help="Só testa URLs em escopo; descarta o resto")
+    recon_nu.add_argument("--out", metavar="ARQUIVO", help="Grava cada registro como uma linha JSON (JSONL)")
+
+    recon_ka = recon_sub.add_parser("katana", help="Crawler — alimenta discover/fuzz com endpoints reais")
+    recon_ka.add_argument("-u", "--url", required=True, metavar="URL")
+    recon_ka.add_argument("--scope", metavar="CAMINHO", help="Recusa a URL inicial se estiver fora do escopo")
+    recon_ka.add_argument("--out", metavar="ARQUIVO", help="Grava cada registro como uma linha JSON (JSONL)")
+
     # proxy (intercepting HTTPS proxy with its own CA)
     prox = subparsers.add_parser("proxy", help="Roda um proxy HTTPS interceptador (mitmproxy)")
     prox.add_argument("--port", type=int, default=8080)
@@ -451,5 +479,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "import",
         "ws",
         "report",
+        "recon",
     }
 )

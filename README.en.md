@@ -471,13 +471,43 @@ curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101 \
 ```
 
 **Engagement report.** Every `validate … --engagement ENG` records the
-validated finding. `report` aggregates them into a single HTML, grouped by
-severity, with repro (`curl`), evidence and remediation — secrets redacted,
-ready to share.
+validated finding; `bounty-scan --engagement ENG` candidates are also
+persisted (never as a confirmation), and any normal request run with
+`--engagement ENG` is logged against that engagement too. `report` aggregates
+all of it into a single HTML, grouped by severity for confirmed findings,
+with a separate section for non-conclusive/candidate results and an appendix
+listing the requests sent — repro (`curl`), evidence and remediation. Every
+target-derived value is redacted (URL, headers, cookies, **and** the free-form
+`evidence` content, e.g. a raw request captured via Interactsh) before it
+ever touches disk, not just in the HTML — ready to share.
 
 ```bash
 curlcmd report --engagement ENG --out report.html
 ```
+
+**Recon (subfinder/httpx/nuclei/katana).** curlcmd already covers "I have a
+URL, let's attack it" well — the phase before that (surface enumeration) is
+orchestrated through the real ProjectDiscovery binaries, never reimplemented
+in Python: detected on `PATH` (`curlcmd doctor` flags presence/absence;
+**curlcmd never installs them**, that stays a manual `go install ...` step),
+run via `asyncio.create_subprocess_exec` (never a shell string), and streamed
+as JSON/JSONL line by line — never text-scraping. Scope is enforced *before*
+anything touches the network: `subfinder`/`katana` refuse a single
+out-of-scope target (the same hard refusal as `validate`/`proxy`);
+`httpx`/`nuclei` filter the host/URL list *before* handing it to the binary —
+an out-of-scope host is never even probed, only dropped and counted.
+
+```bash
+curlcmd recon subfinder -d target.com --scope scope.txt --out subs.jsonl
+curlcmd recon httpx -l subs.txt --scope scope.txt --out live.jsonl
+curlcmd recon nuclei -l urls.txt --severity medium,high,critical --scope scope.txt
+curlcmd recon katana -u https://target.com --scope scope.txt --out crawl.jsonl
+```
+
+> If the Python `httpx` package (the HTTP client, unrelated) also exposes an
+> `httpx` executable on your `PATH`, it can collide with ProjectDiscovery's
+> `httpx` — curlcmd resolves it via `PATH` (`shutil.which`), so check
+> `curlcmd doctor` if the probe behaves unexpectedly.
 
 **Proxy** — an intercepting HTTPS proxy with its own CA, match-and-replace, and
 scope-gated capture into history:

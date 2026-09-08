@@ -16,6 +16,61 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+## [Não lançado]
+
+### Adicionado
+
+* **Orquestração de recon externo (`curlcmd recon`, item 7).** Novo
+  `core/recon/` cobre a fase anterior ao ataque (enumeração de superfície) sem
+  reimplementar ferramentas maduras em Python: `subfinder`, `httpx-projectdiscovery`,
+  `nuclei` e `katana` são detectados no `PATH` (nunca instalados/baixados pelo
+  curlcmd — `curlcmd doctor` só sinaliza presença/ausência), executados via
+  `asyncio.create_subprocess_exec` (argv em lista, nunca string de shell) e
+  streamados como JSON/JSONL linha a linha (`-json`/`-jsonl -silent`, nunca
+  scraping de texto). Escopo é aplicado antes de qualquer coisa tocar a rede:
+  `subfinder -d`/`katana -u` recusam um alvo único fora do escopo
+  (`ScopeError`, mesma recusa dura de `validate`/`proxy`); `httpx -l`/`nuclei -l`
+  filtram a lista de hosts/URLs antes de repassar pro binário — um host fora
+  do escopo nunca chega a ser sondado.
+  `curlcmd recon subfinder -d alvo.com --scope scope.txt --out subs.jsonl`,
+  `curlcmd recon httpx|nuclei -l lista.txt --scope scope.txt`,
+  `curlcmd recon katana -u https://alvo.com --scope scope.txt`.
+
+### Corrigido
+
+* **Evidência de validação agora é redigida antes de persistir.** `evidence`
+  (requisição crua capturada via Interactsh, snapshot de DOM, cadeia de
+  redirect, ...) podia carregar `Authorization`/`Cookie`/segredo em query
+  string do alvo real e ia para o SQLite (e depois pro relatório HTML) sem
+  nenhuma redação — só `html.escape()` no render, que não remove o segredo,
+  só o torna não-clicável. Nova `redaction.redact_evidence()` mascara linhas
+  de cabeçalho sensíveis e query strings com nome de credencial em qualquer
+  string/lista/dict dentro do evidence; aplicada em `_persist_validation`
+  (então nunca toca o disco) e de novo em `report.py` como defesa em
+  profundidade.
+* **`curlcmd report` agora agrega histórico e candidatos do `bounty-scan`,**
+  não só achados de `validate`. Requisições normais com `--engagement`
+  ganham uma tag `engagement` no histórico (migração `PRAGMA user_version`
+  v4→v5) e aparecem como apêndice no relatório; candidatos de `bounty-scan`
+  passam a ser persistidos como `ValidationResult` (veredito `CANDIDATE`,
+  nunca confirmado) e aparecem na seção "não conclusivos" do relatório.
+* **Severidade unificada numa única fonte de verdade.** `report.py` tinha uma
+  segunda tabela `_EXTRA_SEVERITY` divergente de `discovery._SEVERITY` — as
+  categorias foram fundidas na tabela de `discovery.py`. Um validador agora
+  também pode marcar a severidade de uma instância específica via
+  `evidence["severity"]` (usado pelo SSRF: DNS-only vs. conexão HTTP
+  completa são achados de severidade diferente, não mais colapsados).
+* **IDOR: uma negação (401/403/404) que "vaza" o corpo de A não é mais
+  auto-classificada como `blocked`.** Se A viu o recurso (200) e a resposta
+  de negação de B ainda é estruturalmente igual ao corpo real de A (ex.: uma
+  página de erro que ecoa o objeto para debug), isso cai em `suspect` para
+  revisão humana em vez de confirmar cegamente que o controle de acesso
+  funciona.
+* **Um único mecanismo de substituição `{{VAR}}`.** `cli/runner.py` tinha uma
+  `_substitute_variables` própria, duplicando `redaction.reveal_text` (já
+  usado por `auth_macro.py` e por `--reveal`). Removida a duplicata; todo
+  `{{VAR}}` no projeto resolve pela mesma função agora.
+
 ## [4.0.0] - 2026-09-07 — Auth macro, IDOR, SSRF OOB, WebSocket, importers e relatório HTML
 
 ### Adicionado

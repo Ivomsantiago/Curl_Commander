@@ -531,13 +531,43 @@ curlcmd validate idor "https://api/orders/RESOURCE_ID" --ids 101 \
 ```
 
 **Relatório de engajamento.** Todo `validate … --engagement ENG` grava o achado
-validado. `report` agrega tudo num HTML único, agrupado por severidade, com
-reprodução (`curl`), evidência e remediação — segredos redigidos, pronto para
-compartilhar.
+validado; candidatos de `bounty-scan --engagement ENG` também são persistidos
+(nunca como confirmação) e qualquer requisição normal com `--engagement ENG`
+fica registrada no histórico do engajamento. `report` agrega tudo isso num
+HTML único, agrupado por severidade (achados confirmados), com uma seção à
+parte para não conclusivos/candidatos e um apêndice com as requisições
+enviadas — reprodução (`curl`), evidência e remediação. Tudo derivado do alvo
+é redigido (URL, headers, cookies **e** o conteúdo livre de `evidence`, como
+uma requisição crua capturada via Interactsh) antes de tocar o disco, não só
+no HTML — pronto para compartilhar.
 
 ```bash
 curlcmd report --engagement ENG --out report.html
 ```
+
+**Recon (subfinder/httpx/nuclei/katana).** O curlcmd cobre bem "já tenho uma
+URL, quero atacar" — a fase anterior (enumeração de superfície) é orquestrada
+via os binários reais do ProjectDiscovery, nunca reimplementados em Python:
+detectados no `PATH` (`curlcmd doctor` sinaliza presença/ausência; **não são
+instalados pelo curlcmd**, é `go install ...` manual), executados via
+`asyncio.create_subprocess_exec` (nunca uma string de shell) e streamados como
+JSON/JSONL linha a linha — nunca scraping de texto. Escopo é aplicado *antes*
+de qualquer coisa tocar a rede: `subfinder`/`katana` recusam um alvo único fora
+do escopo (mesmo "recusa dura" de `validate`/`proxy`); `httpx`/`nuclei` filtram
+a lista de hosts/URLs *antes* de repassar pro binário — um host fora do escopo
+nunca chega a ser sondado, só descartado e contado.
+
+```bash
+curlcmd recon subfinder -d alvo.com --scope scope.txt --out subs.jsonl
+curlcmd recon httpx -l subs.txt --scope scope.txt --out vivos.jsonl
+curlcmd recon nuclei -l urls.txt --severity medium,high,critical --scope scope.txt
+curlcmd recon katana -u https://alvo.com --scope scope.txt --out crawl.jsonl
+```
+
+> Se o pacote Python `httpx` (o cliente HTTP, não relacionado) também expõe um
+> executável `httpx` no seu `PATH`, ele pode colidir com o `httpx` do
+> ProjectDiscovery — o curlcmd resolve pelo `PATH` (`shutil.which`), então
+> confira `curlcmd doctor` se o probe se comportar de forma inesperada.
 
 O **proxy** — um proxy HTTPS interceptador com CA própria, match-and-replace e
 captura no histórico limitada ao escopo:

@@ -324,6 +324,23 @@ def _gather_checks() -> list[Check]:
             )
         )
 
+    # Recon binaries (item 7) — external Go tools, never installed by curlcmd
+    # itself, so presence/absence is purely informational, never essential.
+    from curlcommander.core.recon.tools import TOOLS
+    from curlcommander.core.recon.tools import available as recon_available
+
+    for name, tool in TOOLS.items():
+        avail = recon_available(name)
+        checks.append(
+            Check(
+                name=tool.label,
+                ok=avail,
+                detail="disponível" if avail else "ausente",
+                essential=False,
+                fix_hint="" if avail else tool.install_hint,
+            )
+        )
+
     # Payload sources (informational).
     try:
         from curlcommander.core import payload_sources

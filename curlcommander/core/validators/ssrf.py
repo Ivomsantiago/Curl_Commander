@@ -63,6 +63,7 @@ def _verdict(url: str, callback: str, interactions: list[Interaction]) -> Valida
             payload=callback,
             evidence={
                 "protocol": "http",
+                "severity": "high",  # full outbound connection: strongest SSRF impact
                 "remote_address": it.remote_address,
                 "raw_request": it.raw_request,
                 "timestamp": it.timestamp,
@@ -82,6 +83,7 @@ def _verdict(url: str, callback: str, interactions: list[Interaction]) -> Valida
             payload=callback,
             evidence={
                 "protocol": "dns",
+                "severity": "medium",  # resolved but never connected: weaker than a full HTTP hit
                 "remote_address": it.remote_address,
                 "timestamp": it.timestamp,
                 "unique_id": it.unique_id,

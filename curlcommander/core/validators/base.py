@@ -11,6 +11,10 @@ CONFIRMED = "CONFIRMED"
 REFLECTED = "REFLECTED"
 NOT_VULNERABLE = "NOT_VULNERABLE"
 ERROR = "ERROR"
+# A bounty-scan anomaly: a lead to investigate, never a confirmation (see
+# core/discovery.py::BountyReport). Persisted as a ValidationResult so
+# `curlcmd report` can aggregate it alongside real validator findings.
+CANDIDATE = "CANDIDATE"
 
 
 @dataclass

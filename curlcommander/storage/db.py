@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS validation_results (
 );
 """
 
-CURRENT_VERSION = 4
+CURRENT_VERSION = 5
 
 
 def open_connection(db_path: str | Path) -> sqlite3.Connection:
@@ -74,6 +74,12 @@ def init_schema(conn: sqlite3.Connection) -> None:
     if version < 4:
         # v3 -> v4: persisted validated findings for the engagement report.
         conn.executescript(VALIDATION_SCHEMA)
+
+    if version < 5:
+        # v4 -> v5: tag a history row with the engagement it was fired under,
+        # so `curlcmd report` can aggregate the requests actually sent during
+        # an engagement, not just the validator findings.
+        _add_column_if_missing(conn, "history", "engagement", "TEXT")
 
     if version < CURRENT_VERSION:
         conn.execute(f"PRAGMA user_version = {CURRENT_VERSION}")

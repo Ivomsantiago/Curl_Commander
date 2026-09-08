@@ -78,9 +78,17 @@ def _classify(rid: str, status_a: int | None, status_b: int | None, ratio: float
             CONFIRMED,
             note="B recebeu 200 com corpo estruturalmente igual ao de A — confirme que o recurso não é de B.",
         )
-    # Access control appears to be working for B.
+    # Access control appears to be working for B — but only trust a denial
+    # when it isn't itself an accidental leak: if A actually saw the resource
+    # (200) and B's "denial" body is still structurally similar to A's real
+    # content (e.g. a 403 page that echoes the object for debugging), that is
+    # not a clean block — fall through to suspect instead of auto-clearing it.
     if status_b in (401, 403, 404):
-        return IDORFinding(rid, status_a, status_b, ratio, BLOCKED, note="B foi barrado (controle de acesso ativo).")
+        leaking_denial = status_a == 200 and ratio >= threshold
+        if not leaking_denial:
+            return IDORFinding(
+                rid, status_a, status_b, ratio, BLOCKED, note="B foi barrado (controle de acesso ativo)."
+            )
     # Everything else needs a human.
     return IDORFinding(
         rid,

@@ -1,6 +1,5 @@
 import asyncio
 import os
-import re
 from datetime import datetime
 from pathlib import Path
 
@@ -109,6 +108,8 @@ def run_cli(args) -> int:
                 return _run_ws(args)
             case "report":
                 return _run_report(args)
+            case "recon":
+                return _run_recon(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -274,7 +275,15 @@ def _run_request(args, repo: HistoryRepo) -> int:
         curl_cmd = build_curl(config)
         _print_curl(curl_cmd)
         if args.save:
-            _persist(config, None, 0.0, repo, env_vars=env_vars, no_redact=no_redact)
+            _persist(
+                config,
+                None,
+                0.0,
+                repo,
+                env_vars=env_vars,
+                no_redact=no_redact,
+                engagement=getattr(args, "engagement", None),
+            )
         return EXIT_OK
 
     return _execute_request(
@@ -672,11 +681,21 @@ def _persist_idor_finding(args, finding) -> None:
 
 
 def _persist_validation(engagement: str | None, result) -> None:
-    """Store a validated finding so `curlcmd report` can aggregate it later."""
+    """Store a validated finding so `curlcmd report` can aggregate it later.
+
+    Evidence is redacted before it ever touches disk — the same "redact by
+    default" rule the request history follows — since a validator's evidence
+    can carry a captured raw request or DOM snapshot with real credentials in
+    it (see core.redaction.redact_evidence).
+    """
     if not engagement:
         return
+    import dataclasses
+
+    from curlcommander.core.redaction import redact_evidence
     from curlcommander.storage.validation_repo import ValidationRepo
 
+    result = dataclasses.replace(result, evidence=redact_evidence(result.evidence))
     repo = ValidationRepo(DB_PATH)
     try:
         repo.save(engagement, result, datetime.now().isoformat(timespec="seconds"))
@@ -687,6 +706,7 @@ def _persist_validation(engagement: str | None, result) -> None:
 def _run_report(args) -> int:
     """`curlcmd report --engagement L --out f.html` — aggregate findings to HTML."""
     from curlcommander.core.report import build_report
+    from curlcommander.storage.history_repo import HistoryRepo
     from curlcommander.storage.validation_repo import ValidationRepo
 
     repo = ValidationRepo(DB_PATH)
@@ -695,14 +715,21 @@ def _run_report(args) -> int:
     finally:
         repo.close()
 
-    if not stored:
+    hrepo = HistoryRepo(DB_PATH)
+    try:
+        history = hrepo.load_by_engagement(args.engagement)
+    finally:
+        hrepo.close()
+
+    if not stored and not history:
         _console.print(
-            f"[yellow]Nenhum achado registrado para o engajamento[/yellow] [bold]{args.engagement}[/bold]. "
-            "Rode `curlcmd validate …` com o mesmo --engagement primeiro."
+            f"[yellow]Nenhum achado ou requisição registrada para o engajamento[/yellow] "
+            f"[bold]{args.engagement}[/bold]. Rode `curlcmd validate/bounty-scan …` ou uma requisição "
+            "normal com o mesmo --engagement primeiro."
         )
         return EXIT_USAGE
 
-    html_doc = build_report(args.engagement, stored)
+    html_doc = build_report(args.engagement, stored, history)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(html_doc, encoding="utf-8", newline="\n")
     confirmed = sum(1 for s in stored if s.result.verdict == "CONFIRMED")
@@ -961,6 +988,94 @@ def _ws_fuzz(args, headers: list[tuple[str, str]]) -> int:
     return EXIT_OK
 
 
+def _recon_line(kind: str, record: dict) -> str:
+    """One human-readable console line per recon record (item 7)."""
+    if kind == "subfinder":
+        return str(record.get("host", record))
+    if kind == "httpx":
+        status = record.get("status_code", record.get("status-code", "?"))
+        url = record.get("url", "")
+        title = record.get("title", "")
+        tech = record.get("tech") or record.get("technologies") or []
+        tech_s = ",".join(tech) if isinstance(tech, list) else str(tech)
+        return f"[bold]{status}[/bold] {url}  {title}  [dim]{tech_s}[/dim]"
+    if kind == "nuclei":
+        info = record.get("info", {}) if isinstance(record.get("info"), dict) else {}
+        sev = str(info.get("severity", "?")).upper()
+        template = record.get("template-id", record.get("template_id", "?"))
+        matched = record.get("matched-at", record.get("matched_at", ""))
+        name = info.get("name", "")
+        colour = {"CRITICAL": "red", "HIGH": "red", "MEDIUM": "yellow", "LOW": "cyan"}.get(sev, "white")
+        return f"[{colour} bold]{sev}[/{colour} bold] {template} {matched}  {name}"
+    # katana
+    from curlcommander.core.recon.scan import katana_url
+
+    return katana_url(record)
+
+
+def _run_recon(args) -> int:
+    """`curlcmd recon subfinder|httpx|nuclei|katana` — orchestrate external
+    recon binaries (never installed/downloaded by curlcmd itself)."""
+    import json
+
+    from curlcommander.core.recon import scan
+    from curlcommander.core.recon.tools import ReconToolError
+
+    scope_entries = scope.load_scope(args.scope) if getattr(args, "scope", None) else []
+
+    def agen():
+        kind = args.recon_cmd
+        if kind == "subfinder":
+            return scan.subfinder(args.domain, scope_entries)
+        if kind == "httpx":
+            hosts = [ln.strip() for ln in Path(args.list).read_text(encoding="utf-8").splitlines() if ln.strip()]
+            batch = scan.filter_scope(hosts, scope_entries, is_url=False)
+            if batch.dropped:
+                _console.print(
+                    f"[yellow]{batch.dropped} host(s) fora do escopo, descartado(s) antes do probe.[/yellow]"
+                )
+            return scan.httpx_probe(hosts, scope_entries)
+        if kind == "nuclei":
+            urls = [ln.strip() for ln in Path(args.list).read_text(encoding="utf-8").splitlines() if ln.strip()]
+            batch = scan.filter_scope(urls, scope_entries, is_url=True)
+            if batch.dropped:
+                _console.print(f"[yellow]{batch.dropped} URL(s) fora do escopo, descartada(s) antes do scan.[/yellow]")
+            severities = [s.strip() for s in (getattr(args, "severity", "") or "").split(",") if s.strip()]
+            return scan.nuclei_scan(
+                urls, severities or None, scope_entries, include_raw=getattr(args, "include_raw", False)
+            )
+        return scan.katana_crawl(args.url, scope_entries)
+
+    out_path = getattr(args, "out", None)
+
+    async def run() -> int:
+        count = 0
+        out_file = open(out_path, "w", encoding="utf-8", newline="\n") if out_path else None
+        try:
+            async for record in agen():
+                count += 1
+                _console.print(_recon_line(args.recon_cmd, record))
+                if out_file:
+                    out_file.write(json.dumps(record) + "\n")
+        finally:
+            if out_file:
+                out_file.close()
+        return count
+
+    try:
+        count = asyncio.run(run())
+    except ReconToolError as exc:
+        _console.print(f"[yellow]{exc}[/yellow]")
+        return EXIT_USAGE
+    except OSError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        return EXIT_USAGE
+
+    saved = f" [dim](salvo em {out_path})[/dim]" if out_path else ""
+    _console.print(f"[bold]{count} registro(s)[/bold]{saved}")
+    return EXIT_OK
+
+
 def _run_import(args, repo: HistoryRepo) -> int:
     """`curlcmd import openapi|postman <spec>` — load a collection into history."""
     from curlcommander.core.importers import SpecImportError, parse_openapi, parse_postman
@@ -1155,6 +1270,21 @@ def _run_bounty_scan(args) -> int:
                     )
                 )
 
+    from curlcommander.core.validators.base import CANDIDATE, ValidationResult
+
+    for c in report.candidates:
+        _persist_validation(
+            args.engagement,
+            ValidationResult(
+                category=c.category,
+                verdict=CANDIDATE,
+                url=param_url.replace("FUZZ", c.payload),
+                detail=c.note,
+                payload=c.payload,
+                evidence={"status_code": c.status_code, "size_bytes": c.size_bytes},
+            ),
+        )
+
     buckets = report.by_severity()
     total = sum(len(v) for v in buckets.values())
     _console.print(
@@ -1261,7 +1391,7 @@ def _execute_raw_request(args, repo: HistoryRepo) -> int:
     # Persist a best-effort config view for history.
     try:
         cfg = parse_raw_request_bytes(raw, host=host_arg)
-        _persist(cfg, result.status_code, result.duration_ms, repo)
+        _persist(cfg, result.status_code, result.duration_ms, repo, engagement=getattr(args, "engagement", None))
     except (RawRequestError, ValueError):
         pass
     return EXIT_OK
@@ -1329,7 +1459,7 @@ def _execute_request(
     if result.error:
         get_logger().error("network error for %s: %s", config.url, result.error)
         _console.print(f"[red bold]Error:[/red bold] {result.error}")
-        _persist(config, None, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
+        _persist(config, None, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact, engagement=engagement)
         return EXIT_NETWORK
 
     get_logger().info("response %s %s in %.0fms", result.status_code, config.url, result.duration_ms)
@@ -1374,7 +1504,15 @@ def _execute_request(
                 f" ({result.size_bytes} B total){hint}[/yellow]"
             )
 
-    _persist(config, result.status_code, result.duration_ms, repo, env_vars=env_vars, no_redact=no_redact)
+    _persist(
+        config,
+        result.status_code,
+        result.duration_ms,
+        repo,
+        env_vars=env_vars,
+        no_redact=no_redact,
+        engagement=engagement,
+    )
 
     if evidence_dir:
         raw_req = serialize_request(config, no_default_headers=config.no_default_headers)
@@ -1453,11 +1591,11 @@ def _build_config(args, env_vars: dict[str, str] | None = None) -> RequestConfig
         name, _, spec = f.partition("=")
         form.append(name.strip(), spec)
 
-    url = _substitute_variables(args.url or "", env_vars)
-    headers = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in headers])
-    params = HeaderList([(k, _substitute_variables(v, env_vars)) for k, v in params])
-    body = _substitute_variables(body, env_vars)
-    auth_value = _substitute_variables(auth_value, env_vars)
+    url = reveal_text(args.url or "", env_vars)
+    headers = HeaderList([(k, reveal_text(v, env_vars)) for k, v in headers])
+    params = HeaderList([(k, reveal_text(v, env_vars)) for k, v in params])
+    body = reveal_text(body, env_vars)
+    auth_value = reveal_text(auth_value, env_vars)
 
     return RequestConfig(
         method=args.method.upper(),
@@ -1496,6 +1634,7 @@ def _persist(
     repo: HistoryRepo,
     env_vars: dict[str, str] | None = None,
     no_redact: bool = False,
+    engagement: str | None = None,
 ) -> None:
     # Redact secrets before they ever touch disk (1.5). The stored curl is
     # regenerated from the redacted config so it can never leak a token either.
@@ -1507,6 +1646,7 @@ def _persist(
         status_code=status_code,
         duration_ms=duration_ms,
         curl_cmd=build_curl(stored),
+        engagement=engagement or "",
     )
     repo.save(entry)
 
@@ -1541,17 +1681,6 @@ def _load_env_file(path: str) -> dict[str, str]:
             key, value = stripped.split("=", 1)
             vars[key.strip()] = value.strip().strip('"').strip("'")
     return vars
-
-
-def _substitute_variables(text: str, env_vars: dict[str, str]) -> str:
-    if not env_vars:
-        return text
-
-    def replace(match: re.Match[str]) -> str:
-        name = match.group(1)
-        return env_vars.get(name, match.group(0))
-
-    return re.sub(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}", replace, text)
 
 
 def _status_style(status_code: int | None) -> str:

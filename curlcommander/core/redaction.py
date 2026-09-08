@@ -161,6 +161,70 @@ def reveal_config(config: RequestConfig, env: dict[str, str]) -> RequestConfig:
     return clone
 
 
+# Query-parameter names whose value is a credential to mask wherever a URL is
+# rendered outside a RequestConfig (redact_config only touches headers/cookies/
+# auth/proxy, never the URL string itself).
+_SECRET_PARAM = re.compile(
+    r"(?i)\b(token|access_token|refresh_token|api[_-]?key|apikey|key|secret|password|passwd|pwd|auth|session|sig|signature)$"
+)
+
+
+def redact_url_query(url: str) -> str:
+    """Mask credential-looking query values in a bare URL string."""
+    base, sep, query = url.partition("?")
+    if not sep:
+        return url
+    parts = []
+    for pair in query.split("&"):
+        name, eq, _value = pair.partition("=")
+        if eq and _SECRET_PARAM.search(name):
+            parts.append(f"{name}={REDACTED}")
+        else:
+            parts.append(pair)
+    return base + sep + "&".join(parts)
+
+
+# Matches a raw HTTP header line (as captured in e.g. an Interactsh
+# raw-request or a saved request dump) whose value is a credential.
+_SENSITIVE_HEADER_LINE = re.compile(r"(?im)^(" + "|".join(re.escape(h) for h in SENSITIVE_HEADERS) + r")\s*:\s*.*$")
+
+
+def _redact_text_blob(text: str) -> str:
+    """Best-effort scrub of a free-form text blob: a captured raw HTTP
+    request, a DOM snapshot, a redirect chain entry, ... Masks sensitive
+    header lines and credential-looking URL query values; anything else in
+    the blob (e.g. arbitrary HTML) is left alone since there's no reliable
+    generic way to find a secret inside free text."""
+    text = _SENSITIVE_HEADER_LINE.sub(lambda m: f"{m.group(1)}: {REDACTED}", text)
+    if "://" in text:
+        text = redact_url_query(text)
+    return text
+
+
+def redact_evidence(evidence: dict[str, object]) -> dict[str, object]:
+    """Redact a validator's free-form ``evidence`` dict before it is persisted
+    or rendered into a shared report.
+
+    Evidence is validator-defined and can carry a captured raw HTTP request
+    (SSRF/Interactsh), a DOM snapshot (XSS), or a redirect chain — any of
+    which may embed the target's real ``Authorization``/``Cookie`` or a
+    credential in a URL query string. HTML-escaping alone (as a report
+    renderer would otherwise do) does not remove that data, only makes it
+    unclickable — it is still readable in the page source.
+    """
+
+    def _scrub(value: object) -> object:
+        if isinstance(value, str):
+            return _redact_text_blob(value)
+        if isinstance(value, list):
+            return [_scrub(v) for v in value]
+        if isinstance(value, dict):
+            return {k: _scrub(v) for k, v in value.items()}
+        return value
+
+    return {k: _scrub(v) for k, v in evidence.items()}
+
+
 def has_redacted(config: RequestConfig) -> bool:
     """True if any credential in the config is an unrecoverable REDACTED mask."""
     fields = [config.auth_value, config.proxy, config.url, config.body]
