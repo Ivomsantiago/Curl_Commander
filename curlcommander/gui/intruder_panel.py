@@ -102,6 +102,8 @@ class IntruderPanel(Widget):
             with Horizontal(id="it-controls"):
                 yield Button("Marcar posição", id="it-mark")
                 yield Select([(m, m) for m in ATTACK_MODES], value="sniper", id="it-mode", allow_blank=False)
+                from textual.widgets import Input
+                yield Input(placeholder="Rate (rps)", id="it-rate", tooltip="Requisições por segundo (0 = sem limite)")
             yield Label("Payloads (um por linha; linha em branco separa listas)")
             with Horizontal(id="it-payload-bar"):
                 yield Select([], prompt="Selecione uma wordlist...", id="it-wordlists")
@@ -164,6 +166,13 @@ class IntruderPanel(Widget):
     def _run(self) -> None:
         mode = self._mode()
         text = self.query_one("#it-request", TextArea).text
+        from textual.widgets import Input
+        rate_str = self.query_one("#it-rate", Input).value.strip()
+        try:
+            rate = float(rate_str) if rate_str else 0.0
+        except ValueError:
+            rate = 0.0
+        
         marked, originals, n = apply_markers(text, mode)
         if n == 0:
             self.query_one("#it-summary", Static).update("[red]Marque ao menos uma posição (§…§).[/red]")
@@ -176,12 +185,12 @@ class IntruderPanel(Widget):
             return
         self._base_config = base
         self._markers = marker_scheme(mode, n)
-        self.query_one("#it-summary", Static).update(f"[dim]Atacando ({mode}, {n} posição/ões)…[/dim]")
-        self.app.run_worker(self._run_worker(base, mode, wordlists, originals), exclusive=True)
+        self.query_one("#it-summary", Static).update(f"[dim]Atacando ({mode}, {n} posição/ões, Rate: {rate}rps)…[/dim]")
+        self.app.run_worker(self._run_worker(base, mode, wordlists, originals, rate), exclusive=True)
 
-    async def _run_worker(self, base, mode, wordlists, originals) -> None:
+    async def _run_worker(self, base, mode, wordlists, originals, rate) -> None:
         try:
-            self._results = await run_attack(base, mode, wordlists, originals=originals)
+            self._results = await run_attack(base, mode, wordlists, originals=originals, rate=rate)
         except Exception as exc:  # noqa: BLE001
             self.query_one("#it-summary", Static).update(f"[red]Falha no ataque:[/red] {exc}")
             return
