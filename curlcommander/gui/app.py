@@ -1,3 +1,5 @@
+from typing import Any
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -234,6 +236,35 @@ class CurlCommanderApp(App):
     def on_history_panel_show_curl_requested(self, event: HistoryPanel.ShowCurlRequested) -> None:
         self.query_one(CurlPanel).update_curl(event.curl_cmd)
 
+    def on_response_view_active_analysis_requested(self, event: Any) -> None:
+        config = self.query_one(RequestPanel)._build_config()
+        self.run_worker(self._active_scan_worker(config), exclusive=False)
+
+    async def _active_scan_worker(self, config: RequestConfig) -> None:
+        from textual.widgets import TextArea
+
+        from curlcommander.core.active import active_scan
+
+        resp_panel = self.query_one(ResponsePanel)
+        ta = resp_panel.query_one("#rv-body", TextArea)
+        ta.load_text("Executando análise ativa heurística (enviando payloads)...")
+
+        findings = await active_scan(config)
+
+        status = resp_panel.query_one("#rv-status")
+        if not findings:
+            ta.load_text("Análise ativa concluída: nenhum problema identificado via heurística.")
+            status.update("[green]Análise ativa: 0 descobertas[/green]")
+            return
+
+        colours = {"high": "red", "medium": "yellow", "low": "cyan", "info": "dim"}
+        lines = ["Análise ATIVA (Vulnerabilidades Encontradas via Heurística!):", ""]
+        for f in findings:
+            lines.append(f"[{f.severity.upper()}] {f.title} — {f.detail}")
+        ta.load_text("\n".join(lines))
+        top = findings[0].severity
+        status.update(f"[{colours.get(top, 'white')}]Análise ativa: {len(findings)} descoberta(s)[/]")
+
     # ------------------------------------------------------------------
     # Worker
     # ------------------------------------------------------------------
@@ -259,6 +290,15 @@ class CurlCommanderApp(App):
             self._quit_armed = False
         self._last_content = result.content
         self.query_one(ResponsePanel).show_result(result)
+
+        if "IntrospectionQuery" in config.body and result.status_code == 200:
+            try:
+                from curlcommander.gui.graphql_tree import GraphQLTreePanel
+
+                tree = self.query_one(RequestPanel).query_one(GraphQLTreePanel)
+                tree.load_schema(result.content.decode("utf-8"))
+            except Exception:
+                pass
 
         entry = HistoryEntry(
             id=0,

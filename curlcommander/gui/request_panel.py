@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ScrollableContainer
@@ -140,9 +141,18 @@ class RequestPanel(Widget):
                 yield Button("Limpar", id="clear-btn")
                 yield Button("Sair", id="quit-btn", variant="error")
 
+            from curlcommander.gui.graphql_tree import GraphQLTreePanel
+
+            yield GraphQLTreePanel(id="graphql-tree")
+
     # ------------------------------------------------------------------
     # Events
     # ------------------------------------------------------------------
+
+    def on_graphql_tree_panel_query_generated(self, event: Any) -> None:
+        self.query_one("#body-area", TextArea).load_text(event.query)
+        self.query_one("#body-type-select", Select).value = "json"
+        self._emit_config_changed()
 
     def on_input_changed(self, _: Input.Changed) -> None:
         self._emit_config_changed()

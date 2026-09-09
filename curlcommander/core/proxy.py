@@ -121,22 +121,27 @@ def build_addon(
     rules: list[MatchReplace],
     repo: Any,
     engagement: str = "",
+    intercept_hook: Any = None,
 ) -> Any:
     """Create a mitmproxy addon that captures in-scope flows and rewrites them."""
     require_proxy()
 
     class _CaptureAddon:
-        def request(self, flow: Any) -> None:
+        async def request(self, flow: Any) -> None:
             if scope_entries and not scope.url_in_scope(flow.request.url, scope_entries):
                 return
             if rules and flow.request.content:
                 flow.request.content = apply_replacements(flow.request.content, rules, is_request=True)
+            if intercept_hook:
+                await intercept_hook(flow, is_request=True)
 
-        def response(self, flow: Any) -> None:
+        async def response(self, flow: Any) -> None:
             if scope_entries and not scope.url_in_scope(flow.request.url, scope_entries):
                 return
             if rules and flow.response and flow.response.content:
                 flow.response.content = apply_replacements(flow.response.content, rules, is_request=False)
+            if intercept_hook:
+                await intercept_hook(flow, is_request=False)
             self._capture(flow)
 
         def _capture(self, flow: Any) -> None:
@@ -167,6 +172,7 @@ async def run_proxy(
     repo: Any,
     engagement: str = "",
     launch_browser: bool = False,
+    intercept_hook: Any = None,
 ) -> None:
     """Run the intercepting proxy until interrupted (Ctrl-C)."""
     require_proxy()
@@ -178,7 +184,7 @@ async def run_proxy(
     if ignore:
         opts.update(ignore_hosts=[ignore])  # type: ignore[no-untyped-call]
     master = DumpMaster(opts)
-    master.addons.add(build_addon(scope_entries, rules, repo, engagement))  # type: ignore[no-untyped-call]
+    master.addons.add(build_addon(scope_entries, rules, repo, engagement, intercept_hook))  # type: ignore[no-untyped-call]
 
     browser_ctx = None
     if launch_browser:

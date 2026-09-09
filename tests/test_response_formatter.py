@@ -1,6 +1,6 @@
 import json
 
-from curlcommander.core.response_formatter import format_body, get_lexer
+from curlcommander.core.response_formatter import format_body, format_hex, get_lexer
 
 
 def test_json_pretty_prints():
@@ -60,3 +60,11 @@ def test_get_lexer_fallback():
     assert get_lexer("text/plain") == "text"
     assert get_lexer("application/octet-stream") == "text"
     assert get_lexer("") == "text"
+
+
+def test_format_hex():
+    data = b"Hello World!\x00\x01\x02\n\r\t"
+    out = format_hex(data)
+    assert "00000000: " in out
+    assert "48 65 6c 6c 6f 20 57 6f 72 6c 64 21 00 01 02 0a" in out
+    assert "Hello World!...." in out

@@ -37,6 +37,20 @@ def format_body(body: str, content_type: str) -> str:
     return body
 
 
+def format_hex(content: bytes) -> str:
+    """Return a hex dump of the content (like xxd)."""
+    lines = []
+    for i in range(0, len(content), 16):
+        chunk = content[i : i + 16]
+        hex_part = " ".join(f"{b:02x}" for b in chunk)
+        # Pad to 47 chars (16 bytes * 3 - 1)
+        hex_part = f"{hex_part:<47}"
+
+        ascii_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
+        lines.append(f"{i:08x}:  {hex_part}  {ascii_part}")
+    return "\n".join(lines)
+
+
 def get_lexer(content_type: str) -> str:
     """Return a pygments/rich lexer name for the given content-type."""
     ct = content_type.lower()

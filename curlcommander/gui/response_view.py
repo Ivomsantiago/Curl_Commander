@@ -10,6 +10,7 @@ import difflib
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
+from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import Button, Input, Label, Select, TextArea
 
@@ -17,7 +18,7 @@ from curlcommander.config import DISPLAY_LIMIT_BYTES
 from curlcommander.core.request_model import ResponseResult
 from curlcommander.core.response_formatter import format_body
 
-_MODES = ["Pretty", "Raw", "Headers", "Cookies"]
+_MODES = ["Pretty", "Raw", "Headers", "Cookies", "Hex"]
 
 
 def diff_bodies(a: str, b: str) -> str:
@@ -54,6 +55,7 @@ class ResponseView(Widget):
             yield Button("◀", id="rv-prev")
             yield Button("▶", id="rv-next")
             yield Button("Analisar", id="rv-analyze")
+            yield Button("Análise Ativa", id="rv-active-analyze", variant="warning")
         yield TextArea("", read_only=True, id="rv-body")
 
     # -- data ---------------------------------------------------------------
@@ -91,6 +93,10 @@ class ResponseView(Widget):
             head += [f"{k}: {v}" for k, v in r.headers.items()]
             body = r.body
             return "\n".join(head) + "\n\n" + body
+        if mode == "Hex":
+            from curlcommander.core.response_formatter import format_hex
+
+            return format_hex(r.content)
         # Pretty
         return format_body(r.body, r.content_type)
 
@@ -162,6 +168,9 @@ class ResponseView(Widget):
         if event.input.id == "rv-search":
             self._recount()
 
+    class ActiveAnalysisRequested(Message):
+        pass
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "rv-next":
             self.next_match()
@@ -171,6 +180,9 @@ class ResponseView(Widget):
             event.stop()
         elif event.button.id == "rv-analyze":
             self.analyze()
+            event.stop()
+        elif event.button.id == "rv-active-analyze":
+            self.post_message(self.ActiveAnalysisRequested())
             event.stop()
 
     def analyze(self) -> int:

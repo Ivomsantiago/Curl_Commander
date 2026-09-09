@@ -81,6 +81,28 @@ def _sensitive_data(body: str | bytes) -> list[Finding]:
             Finding("medium", "sensitive-cpf", "CPF Exposto", "Um padrão de CPF brasileiro foi encontrado na resposta.")
         )
 
+    # GitHub PAT
+    if re.search(r"gh[pousr]_[A-Za-z0-9]{36}", text):
+        out.append(
+            Finding(
+                "high", "sensitive-github", "GitHub Token Exposto", "Possível token de acesso do GitHub (PAT) vazado."
+            )
+        )
+
+    # Stripe Secret Key
+    if re.search(r"(?:sk|rk)_(?:test|live)_[a-zA-Z0-9]{24,99}", text):
+        out.append(
+            Finding("high", "sensitive-stripe", "Stripe Key Exposta", "Possível chave secreta do Stripe encontrada.")
+        )
+
+    # Google API Key
+    if re.search(r"AIza[0-9A-Za-z\-_]{35}", text):
+        out.append(
+            Finding(
+                "high", "sensitive-google-api", "Google API Key Exposta", "Possível chave de API do Google encontrada."
+            )
+        )
+
     return out
 
 
