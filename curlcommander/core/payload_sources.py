@@ -211,20 +211,20 @@ def stale_sources(max_age_days: int = STALE_AFTER_DAYS) -> list[str]:
 
 def iter_payloads(name: str | None = None) -> list[str]:
     """List all available payloads (files ending in .txt).
-    
+
     If name is provided, only lists payloads from that source.
     Returns relative paths (e.g. 'seclists/Fuzzing/XSS.txt').
     """
     out: list[str] = []
     sources = load_sources()
-    
+
     if name:
         if name not in sources:
             return []
         to_search = {name: sources[name]}
     else:
         to_search = sources
-        
+
     for src_name in to_search:
         d = source_dir(src_name)
         if not d.exists() or not d.is_dir():
@@ -235,7 +235,7 @@ def iter_payloads(name: str | None = None) -> list[str]:
             # Store as "source/subpath"
             rel = p.relative_to(d)
             out.append(f"{src_name}/{rel.as_posix()}")
-            
+
     out.sort()
     return out
 

@@ -11,6 +11,7 @@ from curlcommander.core.curl_builder import build_curl
 from curlcommander.core.http_client import send
 from curlcommander.core.request_model import HistoryEntry, RequestConfig
 from curlcommander.gui.curl_panel import CurlPanel
+from curlcommander.gui.decoder_panel import DecoderPanel
 from curlcommander.gui.findings_panel import FindingsPanel
 from curlcommander.gui.history_panel import HistoryPanel
 from curlcommander.gui.intruder_panel import IntruderPanel
@@ -19,7 +20,6 @@ from curlcommander.gui.recon_panel import ReconPanel
 from curlcommander.gui.repeater_panel import RepeaterPanel
 from curlcommander.gui.request_panel import RequestPanel
 from curlcommander.gui.response_panel import ResponsePanel
-from curlcommander.gui.decoder_panel import DecoderPanel
 from curlcommander.gui.status_bar import StatusBar
 from curlcommander.gui.validate_panel import ValidatePanel
 from curlcommander.gui.ws_panel import WSPanel

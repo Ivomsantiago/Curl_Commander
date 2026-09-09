@@ -1,12 +1,13 @@
 import base64
-import urllib.parse
-import html
 import binascii
+import html
+import urllib.parse
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Label, Select, TextArea
+from textual.containers import Horizontal
 from textual.widget import Widget
+from textual.widgets import Button, Label, Select, TextArea
+
 
 class DecoderPanel(Widget):
     """Panel for encoding and decoding data (Base64, URL, Hex, HTML)."""
@@ -32,7 +33,7 @@ class DecoderPanel(Widget):
 
     def compose(self) -> ComposeResult:
         yield Label("Decoder / Encoder")
-        
+
         with Horizontal(id="dc-toolbar"):
             yield Select(
                 [
@@ -62,11 +63,11 @@ class DecoderPanel(Widget):
         fmt = self.query_one("#dc-format", Select).value
         text_in = self.query_one("#dc-input", TextArea).text
         output = self.query_one("#dc-output", TextArea)
-        
+
         if not text_in:
             output.text = ""
             return
-            
+
         try:
             if event.button.id == "dc-encode":
                 if fmt == "base64":
@@ -77,7 +78,7 @@ class DecoderPanel(Widget):
                     output.text = binascii.hexlify(text_in.encode("utf-8")).decode("utf-8")
                 elif fmt == "html":
                     output.text = html.escape(text_in)
-            
+
             elif event.button.id == "dc-decode":
                 if fmt == "base64":
                     output.text = base64.b64decode(text_in).decode("utf-8", errors="replace")

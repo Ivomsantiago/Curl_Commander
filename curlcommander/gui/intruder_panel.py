@@ -126,7 +126,7 @@ class IntruderPanel(Widget):
         table = self.query_one("#it-results", DataTable)
         table.add_columns("Payload", "Status", "Tamanho", "ms", "★")
         table.cursor_type = "row"
-        
+
         # Carregar wordlists disponíveis
         from curlcommander.core.payload_sources import iter_payloads
         wordlists = iter_payloads()
@@ -172,7 +172,7 @@ class IntruderPanel(Widget):
             rate = float(rate_str) if rate_str else 0.0
         except ValueError:
             rate = 0.0
-        
+
         marked, originals, n = apply_markers(text, mode)
         if n == 0:
             self.query_one("#it-summary", Static).update("[red]Marque ao menos uma posição (§…§).[/red]")
