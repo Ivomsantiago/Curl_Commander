@@ -46,7 +46,15 @@ def test_chromium_executable_finds_mac_app_bundle_layouts(tmp_path, monkeypatch)
     monkeypatch.delenv("CURLCOMMANDER_CHROMIUM", raising=False)
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
 
-    exe1 = _touch(tmp_path / "chromium-1234" / "chrome-mac-x64" / "Google Chrome for Testing.app" / "Contents" / "MacOS" / "Google Chrome for Testing")
+    exe1 = _touch(
+        tmp_path
+        / "chromium-1234"
+        / "chrome-mac-x64"
+        / "Google Chrome for Testing.app"
+        / "Contents"
+        / "MacOS"
+        / "Google Chrome for Testing"
+    )
     assert browser.chromium_executable() == str(exe1)
 
 
@@ -68,4 +76,3 @@ def test_chromium_executable_none_when_neither_env_var_set(monkeypatch):
     monkeypatch.delenv("CURLCOMMANDER_CHROMIUM", raising=False)
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
     assert browser.chromium_executable() is None
-
