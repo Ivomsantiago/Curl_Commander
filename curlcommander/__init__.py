@@ -1,4 +1,4 @@
-__version__ = "6.1.6"
+__version__ = "6.2.0"
 
 import asyncio
 import sys
