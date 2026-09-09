@@ -170,9 +170,12 @@ class RequestPanel(Widget):
                 pass
         elif event.button.id == "graphql-intro-btn":
             from curlcommander.core.graphql import INTROSPECTION_QUERY
+
             self.query_one("#body-type-select", Select).value = "json"
             self.query_one("#method-select", Select).value = "POST"
-            self.query_one("#body-area", TextArea).load_text('{"query": "' + INTROSPECTION_QUERY.replace('\n', '\\n').replace('"', '\\"') + '"}')
+            self.query_one("#body-area", TextArea).load_text(
+                '{"query": "' + INTROSPECTION_QUERY.replace("\n", "\\n").replace('"', '\\"') + '"}'
+            )
             self._emit_config_changed()
         elif event.button.id == "clear-btn":
             self.clear_form()

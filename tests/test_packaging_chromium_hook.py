@@ -79,6 +79,7 @@ def test_apply_sets_env_var_when_bundle_present(tmp_path, monkeypatch):
     hook.apply()
 
     import os
+
     try:
         assert os.environ["PLAYWRIGHT_BROWSERS_PATH"] == str(tmp_path / "pw-browsers")
     finally:

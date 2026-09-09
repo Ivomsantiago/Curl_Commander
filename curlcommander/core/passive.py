@@ -69,11 +69,17 @@ def _sensitive_data(body: str | bytes) -> list[Finding]:
 
     # AWS Access Key ID
     if re.search(r"(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])", text) and "AKIA" in text:
-        out.append(Finding("high", "sensitive-aws-key", "Chave AWS Exposta", "Possível AWS Access Key ID (AKIA...) encontrada."))
+        out.append(
+            Finding(
+                "high", "sensitive-aws-key", "Chave AWS Exposta", "Possível AWS Access Key ID (AKIA...) encontrada."
+            )
+        )
 
     # Basic CPF heuristic (XXX.XXX.XXX-XX)
     if re.search(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b", text):
-        out.append(Finding("medium", "sensitive-cpf", "CPF Exposto", "Um padrão de CPF brasileiro foi encontrado na resposta."))
+        out.append(
+            Finding("medium", "sensitive-cpf", "CPF Exposto", "Um padrão de CPF brasileiro foi encontrado na resposta.")
+        )
 
     return out
 
