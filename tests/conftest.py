@@ -11,7 +11,6 @@ asyncio projects apply and is a real root-cause change, not a timeout band-aid
 
 from __future__ import annotations
 
-import asyncio
 import sys
 
 if sys.platform == "win32":
