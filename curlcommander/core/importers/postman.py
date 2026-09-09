@@ -42,6 +42,14 @@ def parse_postman(collection: dict[str, Any], env: dict[str, str] | None = None)
         raise SpecImportError("coleção Postman inválida: faltam 'info' e/ou 'item'")
 
     env = env or {}
+
+    # Load collection-level variables (often used for baseUrl, tokens, etc.)
+    for var in collection.get("variable") or []:
+        if isinstance(var, dict) and var.get("key") and "value" in var:
+            # External env overrides collection vars
+            if str(var["key"]) not in env:
+                env[str(var["key"])] = str(var["value"])
+
     out: list[RequestConfig] = []
     _walk(collection.get("item") or [], env, out)
     return out

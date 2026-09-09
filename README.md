@@ -37,8 +37,10 @@ ou é impossível, com o comando/atalho real aqui (`GUI` = na interface `curlcmd
 | Editar 1 header e reenviar | reescrever a linha inteira | **GUI** aba Repeater: edita e reenvia; histórico de reenvios na aba |
 | Fuzzing com posições e filtros | `ffuf`/`wfuzz` à parte | **GUI** aba Intruder (§marca§ posição, 4 modos, grade ordenável) · **CLI** `-w lista "…/FUZZ" --mc 200` |
 | Interceptar o navegador | Burp/mitmproxy à parte | **GUI** aba Proxy: captura ao vivo + "enviar para Repeater/Intruder" |
-| Analisar segurança da resposta | nada | **GUI** botão Analisar (headers/cookies/CORS/erros → candidatos) |
-| Lembrar o que foi enviado | o shell esquece | **CLI** `curlcmd history` (SQLite pesquisável), `replay <id>` |
+| Analisar segurança da resposta | nada | **GUI** botão Analisar (headers/cookies/CORS/CPFs/Chaves de API → candidatos) |
+| Introspecção GraphQL Automática | curl longo + JSON | **GUI** botão GraphQL Intro injeta a query de schema automaticamente |
+| Comparar Respostas (Diff) | `diff <(curl) <(curl)` | **GUI** botão `Diff Abaixo` exibe diferenças entre duas respostas lado a lado |
+| Lembrar o que foi enviado | o shell esquece | **CLI** `curlcmd history` (SQLite pesquisável com índices), `replay <id>` |
 | Mesma requisição em dev/staging/prod | copiar-colar | **CLI** `{{VAR}}` + `--env-file` |
 | Testar (assert + exit code + JUnit) | não existe | **CLI** `--assert-status/-header/-jsonpath --report junit` |
 | Não vazar token no histórico | fica no `~/.bash_history` | redação de segredo antes de persistir (padrão) |

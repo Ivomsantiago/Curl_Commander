@@ -15,4 +15,6 @@ import asyncio
 import sys
 
 if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # Removed: We now rely on the ProactorEventLoopPolicy injected in __init__.py
+    # because Playwright requires it.
+    pass

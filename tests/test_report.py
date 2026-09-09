@@ -42,7 +42,7 @@ def test_validation_repo_roundtrip(tmp_path):
     db = tmp_path / "h.db"
     repo = ValidationRepo(str(db))
     try:
-        assert repo._conn.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert repo._conn.execute("PRAGMA user_version").fetchone()[0] == 6
         repo.save(
             "ENG",
             ValidationResult("ssrf", CONFIRMED, "https://t/fetch", detail="callback hit", evidence={"proto": "http"}),

@@ -77,11 +77,13 @@ def test_apply_sets_env_var_when_bundle_present(tmp_path, monkeypatch):
 
     hook = _load_hook_module()
     hook.apply()
-
+    
     import os
-
-    assert os.environ["PLAYWRIGHT_BROWSERS_PATH"] == str(tmp_path / "pw-browsers")
-    monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
+    try:
+        assert os.environ["PLAYWRIGHT_BROWSERS_PATH"] == str(tmp_path / "pw-browsers")
+    finally:
+        if "PLAYWRIGHT_BROWSERS_PATH" in os.environ:
+            del os.environ["PLAYWRIGHT_BROWSERS_PATH"]
 
 
 def test_apply_is_a_noop_outside_a_frozen_build(monkeypatch):

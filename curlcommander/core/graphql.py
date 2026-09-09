@@ -74,7 +74,7 @@ def extract_operations(introspection_data: dict[str, Any]) -> dict[str, list[str
             continue
         name = t.get("name")
         fields = t.get("fields") or []
-        field_names = [str(f.get("name")) for f in fields if isinstance(f, dict) and f.get("name")]
+        field_names: list[str] = [str(f.get("name")) for f in fields if isinstance(f, dict) and f.get("name")]
 
         if name == query_type_name:
             queries.extend(field_names)

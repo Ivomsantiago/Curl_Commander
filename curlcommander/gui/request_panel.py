@@ -136,17 +136,21 @@ class RequestPanel(Widget):
             with Horizontal(id="button-row"):
                 yield Button("Enviar", id="send-btn", variant="primary")
                 yield Button("Só curl", id="curl-only-btn")
+                yield Button("GraphQL Intro", id="graphql-intro-btn")
                 yield Button("Limpar", id="clear-btn")
                 yield Button("Sair", id="quit-btn", variant="error")
 
     # ------------------------------------------------------------------
-    # Event handlers — propagate config changes to parent
+    # Events
     # ------------------------------------------------------------------
 
     def on_input_changed(self, _: Input.Changed) -> None:
         self._emit_config_changed()
 
     def on_text_area_changed(self, _: TextArea.Changed) -> None:
+        self._emit_config_changed()
+
+    def on_checkbox_changed(self, _: Checkbox.Changed) -> None:
         self._emit_config_changed()
 
     def on_select_changed(self, _: Select.Changed) -> None:
@@ -164,6 +168,14 @@ class RequestPanel(Widget):
                 self.app.query_one("CurlPanel").update_curl(curl_cmd)  # type: ignore[attr-defined]
             except Exception:
                 pass
+        elif event.button.id == "graphql-intro-btn":
+            from curlcommander.core.graphql import INTROSPECTION_QUERY
+            self.query_one("#body-type-select", Select).value = "json"
+            self.query_one("#method-select", Select).value = "POST"
+            self.query_one("#body-area", TextArea).load_text('{"query": "' + INTROSPECTION_QUERY.replace('\n', '\\n').replace('"', '\\"') + '"}')
+            self._emit_config_changed()
+        elif event.button.id == "clear-btn":
+            self.clear_form()
 
     # ------------------------------------------------------------------
     # Public API

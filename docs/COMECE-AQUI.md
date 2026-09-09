@@ -45,12 +45,15 @@ curlcmd setup --all      # tudo: navegador, proxy, socks, área de transferênci
 Nada é baixado em silêncio: o `setup` mostra o que vai instalar e pede
 confirmação (use `--yes` em scripts).
 
-## 4. Primeira requisição
+## 4. Primeira requisição e Interface (TUI)
 
 ```bash
 curlcmd https://httpbin.org/get                       # GET simples
 curlcmd -X POST --json '{"nome":"ada"}' https://httpbin.org/post
 curlcmd --curl-only -X POST --json '{"id":1}' https://api.exemplo/x   # só o curl
+
+# A Interface no Terminal (Repeater, Proxy, GraphQL, Diff)
+curlcmd --gui
 ```
 
 Veja o histórico e repita uma requisição:

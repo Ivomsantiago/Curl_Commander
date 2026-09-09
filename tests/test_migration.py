@@ -31,7 +31,7 @@ def test_migration_adds_config_json_to_legacy_db(tmp_path):
     assert "config_json" in cols
     assert "origin" in cols  # v3 provenance column added on top
     assert "engagement" in cols  # v5 engagement tag added on top
-    assert repo._conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert repo._conn.execute("PRAGMA user_version").fetchone()[0] == 6
 
     # Legacy row (config_json NULL) still reads back via the flat columns.
     entry = repo.get_by_id(1)
@@ -44,7 +44,7 @@ def test_migration_is_idempotent(tmp_path):
     db = tmp_path / "h.db"
     HistoryRepo(db_path=str(db)).close()
     repo = HistoryRepo(db_path=str(db))  # second open must not error
-    assert repo._conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert repo._conn.execute("PRAGMA user_version").fetchone()[0] == 6
     repo.close()
 
 

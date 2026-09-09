@@ -49,10 +49,33 @@ def analyze(result: ResponseResult, url: str = "") -> list[Finding]:
     findings += _cookies(result.headers)
     findings += _cors(headers)
     findings += _verbose_errors(result.body)
+    findings += _sensitive_data(result.body)
     findings += _fingerprint(headers)
 
     findings.sort(key=lambda f: _SEVERITY_ORDER.get(f.severity, 9))
     return findings
+
+
+def _sensitive_data(body: str | bytes) -> list[Finding]:
+    out: list[Finding] = []
+    if not body:
+        return out
+
+    text = body if isinstance(body, str) else body.decode("utf-8", "ignore")
+
+    # Common JWT pattern (ey...)
+    if re.search(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", text):
+        out.append(Finding("high", "sensitive-jwt", "JWT Exposto", "Um possível token JWT foi encontrado na resposta."))
+
+    # AWS Access Key ID
+    if re.search(r"(?<![A-Z0-9])[A-Z0-9]{20}(?![A-Z0-9])", text) and "AKIA" in text:
+        out.append(Finding("high", "sensitive-aws-key", "Chave AWS Exposta", "Possível AWS Access Key ID (AKIA...) encontrada."))
+
+    # Basic CPF heuristic (XXX.XXX.XXX-XX)
+    if re.search(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b", text):
+        out.append(Finding("medium", "sensitive-cpf", "CPF Exposto", "Um padrão de CPF brasileiro foi encontrado na resposta."))
+
+    return out
 
 
 def _security_headers(headers: dict[str, str], url: str) -> list[Finding]:

@@ -37,6 +37,8 @@ the `curlcmd --gui` interface; `CLI` = on the command line):
 | Fuzzing with positions and filters | separate `ffuf`/`wfuzz` | **GUI** Intruder tab (`§mark§` a position, 4 modes, sortable grid) · **CLI** `-w list "…/FUZZ" --mc 200` |
 | Intercepting the browser | separate Burp/mitmproxy | **GUI** Proxy tab: live capture + "send to Repeater/Intruder" |
 | Analyzing response security | nothing | **GUI** Analyze button (headers/cookies/CORS/errors → candidates) |
+| Automatic GraphQL Intro | long curl + JSON | **GUI** GraphQL Intro button injects the schema query automatically |
+| Compare Responses (Diff) | `diff <(curl) <(curl)` | **GUI** `Diff Below` button displays differences side-by-side |
 | Remembering what was sent | the shell forgets | **CLI** `curlcmd history` (searchable SQLite), `replay <id>` |
 | Same request across dev/staging/prod | copy-paste | **CLI** `{{VAR}}` + `--env-file` |
 | Testing (assert + exit code + JUnit) | doesn't exist | **CLI** `--assert-status/-header/-jsonpath --report junit` |

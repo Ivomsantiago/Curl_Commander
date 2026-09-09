@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS validation_results (
 );
 """
 
-CURRENT_VERSION = 5
+CURRENT_VERSION = 6
 
 
 def open_connection(db_path: str | Path) -> sqlite3.Connection:
@@ -80,6 +80,18 @@ def init_schema(conn: sqlite3.Connection) -> None:
         # so `curlcmd report` can aggregate the requests actually sent during
         # an engagement, not just the validator findings.
         _add_column_if_missing(conn, "history", "engagement", "TEXT")
+
+    if version < 6:
+        # v5 -> v6: performance indexes on frequently queried columns.
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_history_ts ON history(ts);
+            CREATE INDEX IF NOT EXISTS idx_history_method ON history(method);
+            CREATE INDEX IF NOT EXISTS idx_history_url ON history(url);
+            CREATE INDEX IF NOT EXISTS idx_history_engagement ON history(engagement);
+            CREATE INDEX IF NOT EXISTS idx_val_eng ON validation_results(engagement);
+            """
+        )
 
     if version < CURRENT_VERSION:
         conn.execute(f"PRAGMA user_version = {CURRENT_VERSION}")
