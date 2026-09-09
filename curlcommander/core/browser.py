@@ -46,21 +46,25 @@ def chromium_executable() -> str | None:
     base = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
     if base:
         patterns = [
-            # Current Playwright ("Chrome for Testing") layout, *-64 suffix.
-            "chromium-*/chrome-linux64/chrome",
-            "chromium-*/chrome-mac64/Chromium.app/Contents/MacOS/Chromium",
-            "chromium-*/chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium",
-            "chromium-*/chrome-win64/chrome.exe",
-            # Older Playwright layout, no -64 suffix — kept for installs that
-            # predate the Chrome-for-Testing switch.
-            "chromium-*/chrome-linux/chrome",
-            "chromium-*/chrome-mac/Chromium.app/Contents/MacOS/Chromium",
-            "chromium-*/chrome-win/chrome.exe",
+            # Mac (.app bundle executable or standalone binary)
+            "chromium-*/chrome-mac*/*.app/Contents/MacOS/*",
+            "chromium-*/chrome-mac*/Chromium",
+            "chromium-*/chrome-mac*/chrome",
+            # Linux
+            "chromium-*/chrome-linux*/chrome",
+            "chromium-*/chrome-linux*/chrome-wrapper",
+            # Windows
+            "chromium-*/chrome-win*/chrome.exe",
+            # Headless shell fallbacks
+            "chromium_headless_shell-*/chrome-headless-shell-mac*/*.app/Contents/MacOS/*",
+            "chromium_headless_shell-*/chrome-headless-shell-linux*/chrome-headless-shell",
+            "chromium_headless_shell-*/chrome-headless-shell-win*/chrome-headless-shell.exe",
         ]
         for pat in patterns:
             hits = sorted(glob.glob(os.path.join(base, pat)))
-            if hits:
-                return hits[-1]
+            file_hits = [h for h in hits if os.path.isfile(h)]
+            if file_hits:
+                return file_hits[-1]
     return None
 
 
