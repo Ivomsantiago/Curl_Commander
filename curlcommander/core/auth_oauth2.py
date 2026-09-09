@@ -15,11 +15,9 @@ import hashlib
 import os
 import time
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 
-from curlcommander.core.headers import HeaderList
 from curlcommander.core.request_model import RequestConfig
 
 

@@ -1,6 +1,5 @@
 """Tests for response diff generation utility."""
 
-from curlcommander.core.request_model import ResponseResult
 from curlcommander.gui.diff_panel import generate_diff
 
 

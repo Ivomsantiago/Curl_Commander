@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import difflib
+
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal
+from textual.containers import Container
 from textual.widgets import Static, TextArea
 
 from curlcommander.core.request_model import ResponseResult

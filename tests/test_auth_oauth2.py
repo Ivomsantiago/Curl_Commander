@@ -1,7 +1,6 @@
 """Tests for OAuth2 / OIDC manager and PKCE generation."""
 
 import pytest
-import respx
 from httpx import Response
 
 from curlcommander.core.auth_oauth2 import OAuth2Manager, generate_pkce_pair

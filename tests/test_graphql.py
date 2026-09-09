@@ -1,7 +1,8 @@
 """Tests for GraphQL request builder and schema introspection parser."""
 
 import json
-from curlcommander.core.graphql import INTROSPECTION_QUERY, build_graphql_request, extract_operations
+
+from curlcommander.core.graphql import build_graphql_request, extract_operations
 
 
 def test_build_graphql_request():
