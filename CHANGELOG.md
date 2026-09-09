@@ -15,6 +15,29 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 - **Z** (terceiro número) sobe para patches de segurança, correções de
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
+## [6.0.0] - 2026-09-09 — OAuth2, GraphQL, Visual Diff, Docker e correções de lint
+
+### Adicionado
+
+* **Gerenciador OAuth2 / OIDC** (`curlcommander/core/auth_oauth2.py`):
+  - Suporte a fluxos `client_credentials`, `password`, `authorization_code` (com PKCE S256).
+  - Renovação automática de tokens via `refresh_token` com cache e detecção de expiração.
+* **Ferramentas GraphQL** (`curlcommander/core/graphql.py`):
+  - Executor de Introspection Query para mapeamento automático de schema.
+  - Construtor de requisições GraphQL com payload JSON (queries, variables, operationName).
+* **Painel de Visual Diff** (`curlcommander/gui/diff_panel.py`):
+  - Comparador de respostas HTTP (headers + body) com diff unificado lado a lado na TUI.
+* **Ambiente Docker** (`Dockerfile`, `docker-compose.yml`):
+  - Imagem Python 3.12 Slim pré-configurada com Playwright/Chromium e Go toolchain.
+
+### Corrigido
+
+* **Lint (`ruff check`) falhava no CI** — corrigidos 10 erros em 7 arquivos:
+  - Imports não utilizados removidos (`auth_oauth2.py`, `diff_panel.py`, `test_auth_oauth2.py`,
+    `test_diff_panel.py`, `test_graphql.py`).
+  - Blocos de import reorganizados (`diff_panel.py`, `test_graphql.py`).
+  - `UP038` em `headers.py`: `isinstance(x, (A, B, C))` → `isinstance(x, A | B | C)`.
+  - `C416` em `proxy.py`: list comprehension desnecessária → `list()`.
 
 ## [5.1.1] - 2026-09-09 — Corrige detecção de Chromium em pacotes .app e macOS x64
 

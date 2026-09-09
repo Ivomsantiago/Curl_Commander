@@ -109,7 +109,7 @@ def ignore_hosts_regex(scope_entries: list[str]) -> str | None:
 def flow_to_config(flow: Any) -> RequestConfig:
     """Convert a mitmproxy flow's request into a RequestConfig for storage."""
     req = flow.request
-    headers = HeaderList([(k, v) for k, v in req.headers.items(multi=True)])
+    headers = HeaderList(list(req.headers.items(multi=True)))
     body = req.get_text(strict=False) or "" if req.content else ""
     return RequestConfig(
         method=req.method, url=req.url, headers=headers, body=body, body_type="raw" if body else "none"

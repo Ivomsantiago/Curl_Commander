@@ -151,7 +151,7 @@ class HeaderList:
     def __eq__(self, other: object) -> bool:
         if isinstance(other, HeaderList):
             return self._items == other._items
-        if isinstance(other, (dict, list, tuple)):
+        if isinstance(other, dict | list | tuple):
             try:
                 return self._items == HeaderList(other)._items  # type: ignore[arg-type]
             except (TypeError, ValueError):
