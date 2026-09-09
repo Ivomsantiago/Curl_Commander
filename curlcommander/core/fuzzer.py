@@ -90,6 +90,12 @@ def substitute(config: RequestConfig, mapping: dict[str, str]) -> RequestConfig:
     clone.url = sub(config.url)
     clone.body = sub(config.body)
     clone.headers = HeaderList([(k, sub(v)) for k, v in config.headers])
+    
+    # Bugfix: If the body was modified, Content-Length must be recalculated
+    # otherwise httpx/h11 will crash with LocalProtocolError.
+    if clone.body != config.body and clone.headers.get("Content-Length"):
+        clone.headers.set("Content-Length", str(len(clone.body.encode("utf-8"))))
+        
     clone.params = HeaderList([(k, sub(v)) for k, v in config.params])
     clone.cookies = HeaderList([(k, sub(v)) for k, v in config.cookies])
     return clone
