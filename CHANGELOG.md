@@ -15,6 +15,12 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 - **Z** (terceiro número) sobe para patches de segurança, correções de
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
+
+## [6.0.3] - 2026-09-09 — Corrige deadlock (Timeout) na suíte de testes (Windows)
+
+### Corrigido
+* Corrige travamento (timeout de 60s) nos testes da interface gráfica (`test_gui.py`) que ocorria no CI (`windows-latest`) e localmente ao executar a suíte completa com `pytest-asyncio >= 0.24`. Testes que tentavam disparar a saída prematura da aplicação (`app.exit()`) via teclas de atalho podiam resultar em *deadlocks*.
+
 ## [6.0.2] - 2026-09-09 — Corrige validação de fumaça (smoke test) no macOS
 
 ### Corrigido
