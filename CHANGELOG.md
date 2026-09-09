@@ -16,6 +16,15 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+## [5.1.1] - 2026-09-09 — Corrige detecção de Chromium em pacotes .app e macOS x64
+
+### Corrigido
+
+* **`build-binary (full)` falhava no smoke test de Chromium no macOS (x86_64 / arm64)**:
+  - `curlcommander/core/browser.py::chromium_executable` expandido para detectar pacotes `.app` com qualquer nome (ex: `Google Chrome for Testing.app`) e subdiretórios de arquitetura (`chrome-mac-x64`, `chrome-mac-arm64`).
+  - Adicionado suporte a executáveis dentro de pacotes `.app` e fallbacks para headless shell.
+  - Atualizada a suíte de testes unitários para validar layouts macOS e Windows.
+
 ## [5.1.0] - 2026-09-08 — Corrige detecção de Chromium/features no binário "full"
 
 ### Corrigido
