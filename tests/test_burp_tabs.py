@@ -113,6 +113,7 @@ async def test_proxy_capture_and_send_to_repeater(tmp_path):
         await pilot.pause()
         assert app.query_one("#main-tabs", TabbedContent).active == "tab-repeater"
         assert len(app.query_one("#rp-tabs", TabbedContent).query(TabPane)) == 1
+        await pilot.pause()
 
 
 # --- routing + response viewer -------------------------------------------
