@@ -81,7 +81,7 @@ jobs:
           unset PLAYWRIGHT_BROWSERS_PATH CURLCOMMANDER_CHROMIUM
           doctor_out="$("$BIN" doctor)"
           echo "$doctor_out"
-          if ! echo "$doctor_out" | grep -i "Chromium" | grep -qi "pw-browsers\|_internal"; then
+          if ! echo "$doctor_out" | tr -d '\n\r ' | grep -qi "Chromium.*\(pw-browsers\|_internal\)"; then
             echo "::error::Bundled Chromium not detected by doctor with env vars unset"
             echo "--- dist/curlcmd tree (depth 3) ---"
             find dist/curlcmd -maxdepth 3 | sort

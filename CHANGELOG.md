@@ -15,6 +15,12 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 - **Z** (terceiro número) sobe para patches de segurança, correções de
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
+## [6.0.2] - 2026-09-09 — Corrige validação de fumaça (smoke test) no macOS
+
+### Corrigido
+
+* **Pipeline de Release (`build-binary`) falhava em macOS (x64/arm64)**: O comando de validação (`grep`) falhava ao detectar o path do Chromium empacotado devido a quebras de linha introduzidas pelo formatador de tabelas (rich) em ambientes CI sem TTY.
+
 ## [6.0.1] - 2026-09-09 — Corrige erros de tipagem do mypy (CI)
 
 ### Corrigido
