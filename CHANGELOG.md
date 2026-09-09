@@ -15,6 +15,12 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 - **Z** (terceiro número) sobe para patches de segurança, correções de
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
+## [6.0.1] - 2026-09-09 — Corrige erros de tipagem do mypy (CI)
+
+### Corrigido
+
+* **Build CI falhando no mypy**: Corrigidos erros de tipagem em `curlcommander/core/graphql.py` (instanciação do `RequestConfig` e extração da schema).
+
 ## [6.0.0] - 2026-09-09 — OAuth2, GraphQL, Visual Diff, Docker e correções de lint
 
 ### Adicionado

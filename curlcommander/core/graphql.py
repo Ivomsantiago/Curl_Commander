@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.request_model import RequestConfig
 
 INTROSPECTION_QUERY = """
@@ -52,7 +53,7 @@ def build_graphql_request(
         url=url,
         body=body_json,
         body_type="json",
-        headers={"Content-Type": "application/json"},
+        headers=HeaderList([("Content-Type", "application/json")]),
     )
 
 
@@ -73,7 +74,7 @@ def extract_operations(introspection_data: dict[str, Any]) -> dict[str, list[str
             continue
         name = t.get("name")
         fields = t.get("fields") or []
-        field_names = [f.get("name") for f in fields if isinstance(f, dict) and f.get("name")]
+        field_names = [str(f.get("name")) for f in fields if isinstance(f, dict) and f.get("name")]
 
         if name == query_type_name:
             queries.extend(field_names)
