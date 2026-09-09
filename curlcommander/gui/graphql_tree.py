@@ -87,7 +87,7 @@ class GraphQLTreePanel(VerticalScroll):
 
         arg_str = ""
         if args:
-            arg_str = "(" + ", ".join([f"{a['name']}: \"\"" for a in args]) + ")"
+            arg_str = "(" + ", ".join([f'{a["name"]}: ""' for a in args]) + ")"
 
         query = f"{op} {{\n  {field_name}{arg_str} {{\n    # add fields here\n  }}\n}}"
         return json.dumps({"query": query}, indent=2)

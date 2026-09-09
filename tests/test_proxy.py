@@ -69,21 +69,21 @@ def _flow(url: str, body: bytes = b""):
     return f
 
 
-def test_addon_rewrites_and_captures_in_scope():
+async def test_addon_rewrites_and_captures_in_scope():
     repo = HistoryRepo(db_path=":memory:")
     addon = proxy.build_addon(["example.com"], [MatchReplace("secret", "REDACTED", "resp")], repo, engagement="ENG-1")
     f = _flow("https://example.com/x", body=b"a secret token")
-    addon.response(f)
+    await addon.response(f)
     assert f.response.content == b"a REDACTED token"  # match-and-replace applied
     assert repo.load()  # captured to history
     repo.close()
 
 
-def test_addon_ignores_out_of_scope():
+async def test_addon_ignores_out_of_scope():
     repo = HistoryRepo(db_path=":memory:")
     addon = proxy.build_addon(["example.com"], [MatchReplace("secret", "X", "resp")], repo)
     f = _flow("https://evil.com/x", body=b"a secret token")
-    addon.response(f)
+    await addon.response(f)
     assert f.response.content == b"a secret token"  # untouched
     assert repo.load() == []  # not captured
     repo.close()
