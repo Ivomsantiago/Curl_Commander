@@ -75,8 +75,16 @@ class ProxyPanel(Widget):
             yield Button("→ Repeater", id="px-repeater")
             yield Button("→ Intruder", id="px-intruder")
         with Horizontal(id="px-rules-bar"):
-            yield Input(placeholder="Auto-Drop hosts (ex: google-analytics.com, telemetry)", id="px-auto-drop", tooltip="Domínios separados por vírgula para dropar automaticamente")
-            yield Input(placeholder="Match & Replace (ex: secret=X)", id="px-match-replace", tooltip="Ainda não implementado visualmente")
+            yield Input(
+                placeholder="Auto-Drop hosts (ex: google-analytics.com, telemetry)",
+                id="px-auto-drop",
+                tooltip="Domínios separados por vírgula para dropar automaticamente",
+            )
+            yield Input(
+                placeholder="Match & Replace (ex: secret=X)",
+                id="px-match-replace",
+                tooltip="Ainda não implementado visualmente",
+            )
         yield Static("", id="px-ca")
         with Vertical(id="px-intercept-container"):
             yield Static("Interceptado: ...", id="px-intercept-label")

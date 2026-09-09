@@ -103,6 +103,7 @@ class IntruderPanel(Widget):
                 yield Button("Marcar posição", id="it-mark")
                 yield Select([(m, m) for m in ATTACK_MODES], value="sniper", id="it-mode", allow_blank=False)
                 from textual.widgets import Input
+
                 yield Input(placeholder="Rate (rps)", id="it-rate", tooltip="Requisições por segundo (0 = sem limite)")
             yield Label("Payloads (um por linha; linha em branco separa listas)")
             with Horizontal(id="it-payload-bar"):
@@ -129,6 +130,7 @@ class IntruderPanel(Widget):
 
         # Carregar wordlists disponíveis
         from curlcommander.core.payload_sources import iter_payloads
+
         wordlists = iter_payloads()
         if wordlists:
             select = self.query_one("#it-wordlists", Select)
@@ -167,6 +169,7 @@ class IntruderPanel(Widget):
         mode = self._mode()
         text = self.query_one("#it-request", TextArea).text
         from textual.widgets import Input
+
         rate_str = self.query_one("#it-rate", Input).value.strip()
         try:
             rate = float(rate_str) if rate_str else 0.0
@@ -223,6 +226,7 @@ class IntruderPanel(Widget):
             self._render_results()
         elif event.control.id == "it-wordlists" and event.value:
             from curlcommander.core.payload_sources import get_payload_content
+
             content = get_payload_content(str(event.value))
             if content:
                 self.query_one("#it-payloads", TextArea).load_text(content)
