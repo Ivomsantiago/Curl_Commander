@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  curlcommander:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: curlcommander
+    volumes:
+      - ./data:/root/.local/share/curlcommander
+    environment:
+      - TERM=xterm-256color
+    stdin_open: true
+    tty: true
