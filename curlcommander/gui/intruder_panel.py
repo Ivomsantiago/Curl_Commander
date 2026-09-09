@@ -103,6 +103,8 @@ class IntruderPanel(Widget):
                 yield Button("Marcar posição", id="it-mark")
                 yield Select([(m, m) for m in ATTACK_MODES], value="sniper", id="it-mode", allow_blank=False)
             yield Label("Payloads (um por linha; linha em branco separa listas)")
+            with Horizontal(id="it-payload-bar"):
+                yield Select([], prompt="Selecione uma wordlist...", id="it-wordlists")
             yield TextArea("", id="it-payloads")
             with Horizontal():
                 yield Button("Atacar", id="it-run", variant="primary")
@@ -122,6 +124,13 @@ class IntruderPanel(Widget):
         table = self.query_one("#it-results", DataTable)
         table.add_columns("Payload", "Status", "Tamanho", "ms", "★")
         table.cursor_type = "row"
+        
+        # Carregar wordlists disponíveis
+        from curlcommander.core.payload_sources import iter_payloads
+        wordlists = iter_payloads()
+        if wordlists:
+            select = self.query_one("#it-wordlists", Select)
+            select.set_options([(w.split("/")[-1], w) for w in wordlists])
 
     def load_request(self, config: RequestConfig) -> None:
         self._base_url = rawreq.base_url_of(config.url)
@@ -201,8 +210,13 @@ class IntruderPanel(Widget):
             table.add_row(" / ".join(r.payloads), status, str(r.size_bytes), f"{r.duration_ms:.0f}", star)
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "it-sort" and self._results:
+        if event.control.id == "it-sort" and self._results:
             self._render_results()
+        elif event.control.id == "it-wordlists" and event.value:
+            from curlcommander.core.payload_sources import get_payload_content
+            content = get_payload_content(str(event.value))
+            if content:
+                self.query_one("#it-payloads", TextArea).load_text(content)
 
     def _export(self) -> None:
         from pathlib import Path

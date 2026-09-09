@@ -27,8 +27,11 @@ class ProxyPanel(Widget):
     DEFAULT_CSS = """
     ProxyPanel { height: 1fr; }
     ProxyPanel #px-bar { height: auto; }
+    ProxyPanel #px-rules-bar { height: auto; }
     ProxyPanel #px-port { width: 12; }
     ProxyPanel #px-scope { width: 1fr; }
+    ProxyPanel #px-auto-drop { width: 1fr; }
+    ProxyPanel #px-match-replace { width: 1fr; }
     ProxyPanel #px-ca { height: auto; color: $text-muted; }
     ProxyPanel #px-intercept-container { height: 10; display: none; border-top: solid $warning; }
     ProxyPanel #px-intercept-container.-active { display: block; }
@@ -71,6 +74,9 @@ class ProxyPanel(Widget):
             yield Checkbox("Interceptar", value=False, id="px-intercept-toggle")
             yield Button("→ Repeater", id="px-repeater")
             yield Button("→ Intruder", id="px-intruder")
+        with Horizontal(id="px-rules-bar"):
+            yield Input(placeholder="Auto-Drop hosts (ex: google-analytics.com, telemetry)", id="px-auto-drop", tooltip="Domínios separados por vírgula para dropar automaticamente")
+            yield Input(placeholder="Match & Replace (ex: secret=X)", id="px-match-replace", tooltip="Ainda não implementado visualmente")
         yield Static("", id="px-ca")
         with Vertical(id="px-intercept-container"):
             yield Static("Interceptado: ...", id="px-intercept-label")
@@ -116,7 +122,20 @@ class ProxyPanel(Widget):
         def cell(text: str) -> str:
             return f"[{style}]{text}[/{style}]" if style else text
 
-        table.add_row(cell(host), cell(config.method), cell(path), cell(str(status_code or "—")), cell(str(size)), mark)
+        status_text = str(status_code or "—")
+        if status_code and in_scope:
+            if status_code >= 500:
+                status_text = f"[bold red]{status_code}[/bold red]"
+            elif status_code >= 400:
+                status_text = f"[red]{status_code}[/red]"
+            elif status_code >= 300:
+                status_text = f"[yellow]{status_code}[/yellow]"
+            elif status_code >= 200:
+                status_text = f"[green]{status_code}[/green]"
+        elif not in_scope:
+            status_text = cell(str(status_code or "—"))
+
+        table.add_row(cell(host), cell(config.method), cell(path), status_text, cell(str(size)), mark)
 
     def _scope_entries(self) -> list[str]:
         raw = self.query_one("#px-scope", Input).value.strip()
@@ -209,6 +228,15 @@ class ProxyPanel(Widget):
         sink = _CaptureSink(self, scope_entries)
 
         async def intercept_hook(flow: Any, is_request: bool) -> None:
+            # Auto-Drop Check
+            auto_drop_raw = self.query_one("#px-auto-drop", Input).value
+            if auto_drop_raw and is_request:
+                drops = [d.strip().lower() for d in auto_drop_raw.split(",") if d.strip()]
+                host = flow.request.host.lower()
+                if any(d in host for d in drops):
+                    flow.kill()
+                    return
+
             if not self.query_one("#px-intercept-toggle", Checkbox).value:
                 return
             ev = asyncio.Event()
@@ -216,9 +244,19 @@ class ProxyPanel(Widget):
             await ev.wait()
 
         try:
+            match_replace = self.query_one("#px-match-replace", Input).value.strip()
+            rules = []
+            if match_replace:
+                for rule in match_replace.split(","):
+                    rule = rule.strip()
+                    if "=" in rule:
+                        k, v = rule.split("=", 1)
+                        rules.append(proxymod.MatchReplace(k, v, "req"))
+                        rules.append(proxymod.MatchReplace(k, v, "resp"))
+
             # Capture everything (scope marking is done in the panel for
-            # transparency); rules empty; engagement label from the UI is n/a here.
-            await proxymod.run_proxy(port, [], [], sink, engagement="gui", intercept_hook=intercept_hook)
+            # transparency); engagement label from the UI is n/a here.
+            await proxymod.run_proxy(port, rules, [], sink, engagement="gui", intercept_hook=intercept_hook)
         except Exception as exc:  # noqa: BLE001
             self.query_one("#px-ca", Static).update(f"[red]Proxy parou:[/red] {exc}")
         finally:

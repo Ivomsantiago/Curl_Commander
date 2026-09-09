@@ -209,6 +209,53 @@ def stale_sources(max_age_days: int = STALE_AFTER_DAYS) -> list[str]:
     return [n for n in load_sources() if is_available(n) and is_stale(n, max_age_days)]
 
 
+def iter_payloads(name: str | None = None) -> list[str]:
+    """List all available payloads (files ending in .txt).
+    
+    If name is provided, only lists payloads from that source.
+    Returns relative paths (e.g. 'seclists/Fuzzing/XSS.txt').
+    """
+    out: list[str] = []
+    sources = load_sources()
+    
+    if name:
+        if name not in sources:
+            return []
+        to_search = {name: sources[name]}
+    else:
+        to_search = sources
+        
+    for src_name in to_search:
+        d = source_dir(src_name)
+        if not d.exists() or not d.is_dir():
+            continue
+        for p in d.rglob("*.txt"):
+            if ".git" in p.parts:
+                continue
+            # Store as "source/subpath"
+            rel = p.relative_to(d)
+            out.append(f"{src_name}/{rel.as_posix()}")
+            
+    out.sort()
+    return out
+
+
+def get_payload_content(payload_path: str) -> str:
+    """Read a payload file. payload_path should be 'source/subpath.txt'."""
+    try:
+        source_name, subpath = payload_path.split("/", 1)
+        sources = load_sources()
+        if source_name not in sources:
+            return ""
+        d = source_dir(source_name)
+        file_path = d / subpath
+        if file_path.exists() and file_path.is_file():
+            return file_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+    return ""
+
+
 def update(name: str | None = None) -> list[Path]:
     """Update one source, or every available one."""
     names = [name] if name else [n for n in load_sources() if is_available(n)]
