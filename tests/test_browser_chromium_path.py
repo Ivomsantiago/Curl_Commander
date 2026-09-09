@@ -41,6 +41,23 @@ def test_chromium_executable_still_finds_older_layout(tmp_path, monkeypatch):
     assert browser.chromium_executable() == str(exe)
 
 
+def test_chromium_executable_finds_mac_app_bundle_layouts(tmp_path, monkeypatch):
+    """Playwright macOS layouts: chrome-mac-x64, chrome-mac-arm64, chrome-mac64 with .app bundles."""
+    monkeypatch.delenv("CURLCOMMANDER_CHROMIUM", raising=False)
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+
+    exe1 = _touch(tmp_path / "chromium-1234" / "chrome-mac-x64" / "Google Chrome for Testing.app" / "Contents" / "MacOS" / "Google Chrome for Testing")
+    assert browser.chromium_executable() == str(exe1)
+
+
+def test_chromium_executable_finds_win64_layout(tmp_path, monkeypatch):
+    """Playwright Windows layout: chromium-<id>/chrome-win64/chrome.exe."""
+    monkeypatch.delenv("CURLCOMMANDER_CHROMIUM", raising=False)
+    exe = _touch(tmp_path / "chromium-1234" / "chrome-win64" / "chrome.exe")
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    assert browser.chromium_executable() == str(exe)
+
+
 def test_chromium_executable_none_when_nothing_matches(tmp_path, monkeypatch):
     monkeypatch.delenv("CURLCOMMANDER_CHROMIUM", raising=False)
     monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))  # empty dir
@@ -51,3 +68,4 @@ def test_chromium_executable_none_when_neither_env_var_set(monkeypatch):
     monkeypatch.delenv("CURLCOMMANDER_CHROMIUM", raising=False)
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
     assert browser.chromium_executable() is None
+
