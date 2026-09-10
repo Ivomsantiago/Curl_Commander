@@ -16,6 +16,25 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+## [7.0.0] - 2026-09-10 — Extração dos handlers de histórico da CLI
+
+### Alterado
+
+* Extraídos os handlers de listagem, exibição de cURL, exportação e exclusão
+  do histórico para `curlcommander.cli.commands.history`, reduzindo as
+  responsabilidades de `cli/runner.py` sem alterar os subcomandos, mensagens
+  ou códigos de saída existentes.
+* O dispatcher da CLI continua responsável pelo ciclo de vida do repositório,
+  enquanto as operações de histórico recebem explicitamente o console usado
+  para apresentar seus resultados.
+
+### Distribuição
+
+* Versão do pacote e do comando `curlcmd --version` atualizadas para `7.0.0`.
+* A tag `v7.0.0` aciona o workflow de release existente, que executa os quality
+  gates, gera os binários multiplataforma, cria a GitHub Release e publica o
+  wheel e o sdist no PyPI por Trusted Publishing.
+
 ## [6.0.3] - 2026-09-09 — Corrige deadlock (Timeout) na suíte de testes (Windows)
 
 ### Corrigido

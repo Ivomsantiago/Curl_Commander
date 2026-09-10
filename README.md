@@ -95,6 +95,13 @@ gerenciado com um atalho `curlcmd` — resolve o seu PATH, é idempotente e acei
 
 Novo por aqui? Comece pelo guia rápido em [`docs/COMECE-AQUI.md`](docs/COMECE-AQUI.md).
 
+### Novidades da versão 7.0.0
+
+A organização interna da CLI começou a ser simplificada: os comandos de
+histórico agora vivem em um módulo próprio, enquanto `runner.py` permanece como
+dispatcher. A mudança preserva os mesmos subcomandos, mensagens e códigos de
+saída. Consulte o [`CHANGELOG.md`](CHANGELOG.md) para os detalhes da versão.
+
 ---
 
 ## 1. Instalação
