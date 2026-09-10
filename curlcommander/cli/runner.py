@@ -13,6 +13,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
+from curlcommander.cli.commands.history import delete_history, export_history, show_curl, show_history, status_style
 from curlcommander.config import DB_PATH, DISPLAY_LIMIT_BYTES, InvalidEngagementName, db_path_for
 from curlcommander.core import payload_catalog, payload_sources, scope
 from curlcommander.core.api_styles import (
@@ -58,6 +59,7 @@ from curlcommander.storage.history_repo import HistoryRepo
 
 _console = Console()
 
+
 # Exit codes (curl-compatible where it matters).
 EXIT_OK = 0
 EXIT_USAGE = 1  # usage / parse / not-found
@@ -84,15 +86,15 @@ def run_cli(args) -> int:
         reveal = getattr(args, "reveal", False)
         match args.subcommand:
             case "history":
-                return _show_history(repo, reveal=reveal)
+                return show_history(repo, _console, reveal=reveal)
             case "replay":
                 return _replay(repo, args.id)
             case "curl":
-                return _show_curl_from_history(repo, args.id, reveal=reveal)
+                return show_curl(repo, args.id, _console, reveal=reveal)
             case "export-history":
-                return _export_history(repo, args.output, reveal=reveal)
+                return export_history(repo, args.output, _console, reveal=reveal)
             case "delete-history":
-                return _delete_history(repo, args.id)
+                return delete_history(repo, args.id, _console)
             case "clear-history":
                 repo.clear()
                 _console.print("[green]History cleared.[/green]")
@@ -158,38 +160,6 @@ def run_cli(args) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _show_history(repo: HistoryRepo, reveal: bool = False) -> int:
-    entries = repo.load()
-    if not entries:
-        _console.print("[dim]No history entries.[/dim]")
-        return EXIT_OK
-
-    env = dict(os.environ)
-
-    table = Table(title="Request History", show_lines=False)
-    table.add_column("ID", style="dim", justify="right")
-    table.add_column("Timestamp")
-    table.add_column("Method")
-    table.add_column("URL", no_wrap=True, max_width=50)
-    table.add_column("Status", justify="center")
-    table.add_column("ms", justify="right")
-
-    for entry in entries:
-        style = _status_style(entry.status_code)
-        url = reveal_text(entry.request.url, env) if reveal else entry.request.url
-        table.add_row(
-            str(entry.id),
-            entry.timestamp,
-            entry.request.method,
-            url,
-            f"[{style}]{entry.status_code or 'ERR'}[/{style}]",
-            f"{entry.duration_ms:.0f}",
-        )
-
-    _console.print(table)
-    return EXIT_OK
-
-
 def _replay(repo: HistoryRepo, id: int) -> int:
     entry = repo.get_by_id(id)
     if entry is None:
@@ -209,23 +179,6 @@ def _replay(repo: HistoryRepo, id: int) -> int:
 
     _console.print(f"[dim]Replaying #{id}…[/dim]")
     return _execute_request(prepared, repo)
-
-
-def _show_curl_from_history(repo: HistoryRepo, id: int, reveal: bool = False) -> int:
-    entry = repo.get_by_id(id)
-    if entry is None:
-        _console.print(f"[red]No history entry with ID {id}.[/red]")
-        return EXIT_USAGE
-
-    curl_cmd = reveal_text(entry.curl_cmd, dict(os.environ)) if reveal else entry.curl_cmd
-    _print_curl(curl_cmd)
-    return EXIT_OK
-
-
-def _export_history(repo: HistoryRepo, output: str, reveal: bool = False) -> int:
-    repo.export_json(output, reveal=reveal)
-    _console.print(f"[green]History exported to[/green] [bold]{output}[/bold]")
-    return EXIT_OK
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +395,7 @@ def _run_fuzz(config: RequestConfig, args) -> int:
     table.add_column("ms", justify="right")
     table.add_column("", justify="center")
     for r in results:
-        style = _status_style(r.status_code)
+        style = status_style(r.status_code)
         table.add_row(
             " / ".join(r.payloads),
             f"[{style}]{r.status_code or 'ERR'}[/{style}]",
@@ -537,7 +490,7 @@ def _print_fuzz_table(results, title: str) -> None:
     table.add_column("ms", justify="right")
     table.add_column("", justify="center")
     for r in results:
-        style = _status_style(r.status_code)
+        style = status_style(r.status_code)
         table.add_row(
             " / ".join(r.payloads),
             f"[{style}]{r.status_code or 'ERR'}[/{style}]",
@@ -1562,7 +1515,7 @@ def _execute_request(
 
     get_logger().info("response %s %s in %.0fms", result.status_code, config.url, result.duration_ms)
 
-    style = _status_style(result.status_code)
+    style = status_style(result.status_code)
     status_line = Text()
     status_line.append(f"{result.status_code} {result.reason}", style=f"bold {style}")
     status_line.append(f"  {result.duration_ms:.0f} ms  {result.size_bytes} B", style="dim")
@@ -1753,16 +1706,6 @@ def _print_curl(curl_cmd: str) -> None:
     _console.print(Syntax(curl_cmd, "bash", theme="monokai", word_wrap=True))
 
 
-def _delete_history(repo: HistoryRepo, id: int) -> int:
-    entry = repo.get_by_id(id)
-    if entry is None:
-        _console.print(f"[red]No history entry with ID {id}.[/red]")
-        return EXIT_USAGE
-    repo.delete_by_id(id)
-    _console.print(f"[green]Deleted history entry {id}.[/green]")
-    return EXIT_OK
-
-
 def _load_env_file(path: str) -> dict[str, str]:
     vars: dict[str, str] = {}
     try:
@@ -1779,13 +1722,3 @@ def _load_env_file(path: str) -> dict[str, str]:
             key, value = stripped.split("=", 1)
             vars[key.strip()] = value.strip().strip('"').strip("'")
     return vars
-
-
-def _status_style(status_code: int | None) -> str:
-    if status_code is None:
-        return "red"
-    if status_code < 300:
-        return "green"
-    if status_code < 400:
-        return "yellow"
-    return "red"
