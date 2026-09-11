@@ -92,12 +92,33 @@ function Invoke-Setup([string]$exe) {
     }
 }
 
+function Update-ToolPath([string]$tool, [string[]]$arguments) {
+    # Windows PowerShell 5.1 turns any native stderr output into a
+    # NativeCommandError when the script uses ErrorActionPreference=Stop.
+    # uv writes harmless status messages (including "already in PATH") to
+    # stderr, so run only this best-effort shell integration with Continue and
+    # decide from the native exit code instead. Do not let it abort an install
+    # that has already succeeded.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $tool @arguments 2>$null | Out-Null
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
+    if ($exitCode -ne 0) {
+        Warn "Não foi possível atualizar o PATH automaticamente com '$tool'. Abra um novo terminal se curlcmd não for encontrado."
+    }
+}
+
 function Install-WithUv {
     Info 'Instalando com uv tool (isolado)…'
     if (-not (Confirm 'Baixar/instalar o curlcmd via uv (usa a rede)?')) { throw 'Cancelado.' }
     if ($Source -eq $Package) { uv tool install --force $Package }
     else { uv tool install --force --from $Source $Package }
-    uv tool update-shell 2>$null | Out-Null
+    Update-ToolPath 'uv' @('tool', 'update-shell')
     Ok 'Instalado via uv tool.'
     Update-CurrentSessionPath
     if (Have 'curlcmd') { [void](Confirm-Version 'curlcmd'); Invoke-Setup 'curlcmd' }
@@ -108,7 +129,7 @@ function Install-WithPipx {
     Info 'Instalando com pipx (isolado)…'
     if (-not (Confirm 'Baixar/instalar o curlcmd via pipx (usa a rede)?')) { throw 'Cancelado.' }
     pipx install --force $Source
-    pipx ensurepath 2>$null | Out-Null
+    Update-ToolPath 'pipx' @('ensurepath')
     Ok 'Instalado via pipx.'
     Update-CurrentSessionPath
     if (Have 'curlcmd') { [void](Confirm-Version 'curlcmd'); Invoke-Setup 'curlcmd' }

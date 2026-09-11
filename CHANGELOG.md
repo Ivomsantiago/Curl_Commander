@@ -16,6 +16,18 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+
+## [Não lançado]
+
+### Corrigido
+
+* O instalador do Windows não encerra mais depois de uma instalação bem-sucedida
+  via `uv` quando `uv tool update-shell` escreve a mensagem informativa
+  `already in PATH` no stderr. No Windows PowerShell 5.1, essa saída era
+  convertida em `NativeCommandError` por `$ErrorActionPreference = 'Stop'`.
+  A atualização de PATH agora é tratada como best-effort, baseada no exit code
+  nativo, tanto para `uv` quanto para `pipx`.
+  
 ## [7.0.0] - 2026-09-10 — Extração dos handlers de histórico da CLI
 
 ### Alterado
