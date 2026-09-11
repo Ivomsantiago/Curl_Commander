@@ -16,6 +16,7 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   pipeline/CI e melhorias de build/empacotamento — sem mudança de
   funcionalidade ou de API pública.
 
+
 ## [Não lançado]
 
 ### Corrigido
@@ -26,7 +27,7 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   convertida em `NativeCommandError` por `$ErrorActionPreference = 'Stop'`.
   A atualização de PATH agora é tratada como best-effort, baseada no exit code
   nativo, tanto para `uv` quanto para `pipx`.
-
+  
 ## [7.0.0] - 2026-09-10 — Extração dos handlers de histórico da CLI
 
 ### Alterado
