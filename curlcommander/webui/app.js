@@ -85,6 +85,25 @@ function statusClass(code) {
   return "s" + String(code)[0];
 }
 
+// ---- status bar -----------------------------------------------------------
+
+function sbSetScope(n) { const el = $("#sb-scope"); if (el) el.textContent = String(n); }
+function sbSetProxy(st) {
+  const v = $("#sb-proxy"), dot = $("#sb-proxy-dot");
+  if (!v) return;
+  if (!st || !st.available) { v.textContent = "n/d"; dot.classList.remove("on"); return; }
+  v.textContent = st.running ? `:${st.port}${st.intercept ? " intercept" : ""}` : "off";
+  dot.classList.toggle("on", !!st.running);
+}
+function sbSetResponse(r) {
+  const el = $("#sb-response");
+  if (!el) return;
+  if (!r) { el.textContent = "—"; return; }
+  const cls = statusClass(r.status_code);
+  el.innerHTML =
+    `<span class="${cls}">${r.status_code ?? "ERR"}</span> · ${Math.round(r.duration_ms ?? 0)} ms · ${r.size_bytes ?? 0} B`;
+}
+
 function renderFindings(el, findings) {
   el.innerHTML = "";
   if (!findings || !findings.length) {
@@ -110,21 +129,30 @@ function escapeHtml(s) {
 async function sendRequest() {
   const req = currentRequest();
   if (!req.url) { toast("Informe a URL", true); return; }
+  const btn = $("#send");
+  if (btn.disabled) return; // guard against double-submit while in flight
+  btn.disabled = true; btn.setAttribute("aria-busy", "true");
+  const emptyHint = $("#resp-empty"); if (emptyHint) emptyHint.style.display = "none";
   $("#resp-meta").textContent = "enviando…";
   $("#resp-content").textContent = "";
   $("#resp-headers").textContent = "";
   $("#resp-findings").innerHTML = "";
-  const { data } = await api("POST", "/api/send", req);
-  if (data.error) { $("#resp-meta").textContent = ""; toast(data.error, true); return; }
-  const r = data.response || {};
-  const cls = statusClass(r.status_code);
-  $("#resp-meta").innerHTML =
-    `<span class="${cls}">${r.status_code ?? "ERR"} ${escapeHtml(r.reason || "")}</span> · ` +
-    `${r.duration_ms ?? 0} ms · ${r.size_bytes ?? 0} B`;
-  $("#resp-headers").textContent = Object.entries(r.headers || {}).map(([k, v]) => `${k}: ${v}`).join("\n");
-  $("#resp-content").textContent = r.body || (r.error ? "Erro: " + r.error : "");
-  if (data.curl) $("#curl-preview").textContent = data.curl;
-  window._lastSendReq = req;
+  try {
+    const { data } = await api("POST", "/api/send", req);
+    if (data.error) { $("#resp-meta").textContent = ""; toast(data.error, true); return; }
+    const r = data.response || {};
+    const cls = statusClass(r.status_code);
+    $("#resp-meta").innerHTML =
+      `<span class="${cls}">${r.status_code ?? "ERR"} ${escapeHtml(r.reason || "")}</span> · ` +
+      `${Math.round(r.duration_ms ?? 0)} ms · ${r.size_bytes ?? 0} B`;
+    $("#resp-headers").textContent = Object.entries(r.headers || {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+    $("#resp-content").textContent = r.body || (r.error ? "Erro do transporte: " + r.error : "");
+    if (data.curl) $("#curl-preview").textContent = data.curl;
+    sbSetResponse(r);
+    window._lastSendReq = req;
+  } finally {
+    btn.disabled = false; btn.removeAttribute("aria-busy");
+  }
 }
 
 async function scanCurrent() {
@@ -220,6 +248,7 @@ async function refreshProxyStatus() {
   if (st.ca_cert) $("#proxy-ca").innerHTML = `CA: <code>${escapeHtml(st.ca_cert)}</code> — confie só para testes e remova depois.`;
   if (st.error) toast(st.error, true);
   $("#intercept-toggle").checked = !!st.intercept;
+  sbSetProxy(st);
   if (st.running && st.intercept) startInterceptPoll(); else stopInterceptPoll();
 }
 
@@ -308,13 +337,17 @@ async function runScan() {
 
 async function loadScope() {
   const { data } = await api("GET", "/api/scope");
-  $("#scope-text").value = (data.scope || []).join("\n");
+  const scope = data.scope || [];
+  $("#scope-text").value = scope.join("\n");
+  sbSetScope(scope.length);
 }
 
 async function saveScope() {
   const entries = $("#scope-text").value.split("\n").map((s) => s.trim()).filter(Boolean);
   const { data } = await api("POST", "/api/scope", { entries });
-  $("#scope-status").textContent = `Escopo salvo: ${(data.scope || []).length} host(s).`;
+  const n = (data.scope || []).length;
+  $("#scope-status").textContent = n ? `Escopo salvo: ${n} host(s) em escopo.` : "Escopo limpo: sem restrição.";
+  sbSetScope(n);
   toast("Escopo atualizado");
 }
 
@@ -344,10 +377,11 @@ document.addEventListener("keydown", (e) => {
 
 (async function init() {
   const { data } = await api("GET", "/api/info");
-  if (data.version) $("#brand-version").textContent = "v" + data.version + " · GUI";
-  const tag = $("#engagement-tag");
-  if (data.engagement) { tag.textContent = "engagement: " + data.engagement; tag.classList.add("eng"); }
-  else { tag.textContent = "sem engagement"; }
+  if (data.version) $("#brand-version").textContent = "v" + data.version;
+  $("#engagement-tag").textContent = data.engagement || "—";
+  sbSetScope((data.scope || []).length);
+  // Reflect proxy state in the status bar from any view.
+  try { const { data: st } = await api("GET", "/api/proxy/status"); sbSetProxy(st); } catch {}
   const initial = (location.hash || "").replace("#", "");
   if (["request", "history", "proxy", "scan", "scope"].includes(initial)) showView(initial);
 })();
