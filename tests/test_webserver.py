@@ -43,6 +43,21 @@ def test_unknown_endpoint_404():
     assert status == 404 and "error" in body
 
 
+def test_proxy_status_endpoint_degrades_without_mitmproxy():
+    from curlcommander.core.webproxy import InterceptController
+
+    status, body = webserver.handle_proxy_api("GET", "/api/proxy/status", {}, InterceptController())
+    assert status == 200
+    assert "available" in body and body["running"] is False
+
+
+def test_proxy_unknown_endpoint_404():
+    from curlcommander.core.webproxy import InterceptController
+
+    status, body = webserver.handle_proxy_api("GET", "/api/proxy/nope", {}, InterceptController())
+    assert status == 404
+
+
 @respx.mock
 def test_active_scan_endpoint(tmp_path):
     respx.get(url__regex=r"https://x/.*").mock(

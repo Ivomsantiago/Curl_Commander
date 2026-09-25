@@ -102,11 +102,32 @@
 
       <!-- PROXY -->
       <section class="view" data-view="proxy">
-        <div class="view-head"><h2>Proxy interceptador</h2><button id="proxy-refresh" class="ghost">Atualizar</button></div>
-        <p class="hint">
-          Inicie o proxy pela CLI: <code class="mono">curlcmd proxy --engagement ENG --launch-browser --browser-engine firefox</code>.
-          O tráfego capturado (origem <code>proxy</code>) aparece abaixo — clique numa linha para mandar pro Repeater.
-        </p>
+        <div class="view-head"><h2>Proxy interceptador</h2><span id="proxy-status" class="meta"></span></div>
+        <div class="req-bar">
+          <input id="proxy-port" type="text" value="8080" style="width:90px" />
+          <button id="proxy-start" class="primary">Iniciar</button>
+          <button id="proxy-stop" class="ghost">Parar</button>
+          <label class="row"><input type="checkbox" id="intercept-toggle" /> Interceptar</label>
+          <select id="browser-engine"><option value="chromium">chromium</option><option value="firefox">firefox</option><option value="webkit">webkit</option></select>
+          <input id="browser-channel" type="text" placeholder="channel (chrome/msedge)" style="width:180px" />
+          <button id="browser-launch" class="ghost">Abrir navegador pelo proxy</button>
+        </div>
+        <p class="hint" id="proxy-ca"></p>
+
+        <!-- live intercept queue -->
+        <div id="intercept-panel" class="pane" style="display:none; max-height:340px;">
+          <div class="pane-head"><span id="intercept-label">Interceptado</span>
+            <div class="pane-tabs">
+              <button id="intercept-forward" class="ptab">Forward</button>
+              <button id="intercept-drop" class="ptab">Drop</button>
+              <button id="intercept-forward-all" class="ptab">Forward tudo</button>
+            </div>
+          </div>
+          <div class="ptab-panel active" style="display:flex;">
+            <textarea id="intercept-body" spellcheck="false"></textarea>
+          </div>
+        </div>
+
         <table class="grid" id="proxy-table">
           <thead><tr><th>#</th><th>Método</th><th>URL</th><th>Status</th><th>Origem</th></tr></thead>
           <tbody></tbody>

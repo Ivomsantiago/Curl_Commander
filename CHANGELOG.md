@@ -21,6 +21,17 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Interceptação ao vivo e lançamento de navegador dentro da GUI gráfica.**
+  A aba Proxy agora inicia/para um proxy interceptador em processo
+  (`core/webproxy.py`), liga/desliga a interceptação, e mostra cada requisição/
+  resposta retida num painel onde dá para **editar o corpo e Forward/Drop**
+  (ou "Forward tudo"). Um botão **"Abrir navegador pelo proxy"** lança
+  Chromium/Firefox/WebKit (ou um navegador do sistema via channel) já roteado.
+  Endpoints: `/api/proxy/{status,start,stop}`, `/api/intercept/{toggle,queue,
+  resolve,forward-all}`, `/api/browser/launch`. Degrada com mensagem clara
+  quando o extra `[proxy]` (mitmproxy) não está instalado. Navegação da GUI
+  passou a ter deep-link por hash (`#proxy`, `#history`, …).
+
 * **Sistema de plugins de usuário (`core/plugins.py`).** Solte um `.py` em
   `<config>/plugins/` com uma função `register(registry)` que adiciona checagens
   passivas e/ou ativas — elas rodam junto com as embutidas em `passive_scan` e

@@ -27,6 +27,7 @@ function toast(msg, isErr) {
 function showView(name) {
   $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
   $$(".view").forEach((v) => v.classList.toggle("active", v.dataset.view === name));
+  try { history.replaceState(null, "", "#" + name); } catch {}
   if (name === "history") loadHistory();
   if (name === "proxy") loadProxy();
   if (name === "scope") loadScope();
@@ -189,9 +190,13 @@ async function loadHistory() {
   );
 }
 
+let interceptTimer = null;
+let currentHeld = null;
+
 async function loadProxy() {
+  await refreshProxyStatus();
   const { data } = await api("GET", "/api/history");
-  const captured = (data.entries || []).filter((e) => e.origin === "proxy" || e.origin === "mcp");
+  const captured = (data.entries || []).filter((e) => (e.origin || "").startsWith("proxy") || (e.origin || "").startsWith("mcp"));
   fillTable(
     $("#proxy-table tbody"),
     captured,
@@ -200,6 +205,75 @@ async function loadProxy() {
       `<td>${e.id}</td><td>${e.method}</td><td class="url">${escapeHtml(e.url)}</td>` +
       `<td class="${statusClass(e.status_code)}">${e.status_code ?? "—"}</td><td>${e.origin || ""}</td>`
   );
+}
+
+async function refreshProxyStatus() {
+  const { data } = await api("GET", "/api/proxy/status");
+  const st = data || {};
+  if (!st.available) {
+    $("#proxy-status").innerHTML = '<span class="s4">mitmproxy ausente</span> — instale: <code>curlcmd setup --proxy</code>';
+  } else {
+    $("#proxy-status").innerHTML = st.running
+      ? `<span class="s2">rodando :${st.port}</span> · fila ${st.queued} · intercept ${st.intercept ? "ON" : "off"}`
+      : "<span class='muted'>parado</span>";
+  }
+  if (st.ca_cert) $("#proxy-ca").innerHTML = `CA: <code>${escapeHtml(st.ca_cert)}</code> — confie só para testes e remova depois.`;
+  if (st.error) toast(st.error, true);
+  $("#intercept-toggle").checked = !!st.intercept;
+  if (st.running && st.intercept) startInterceptPoll(); else stopInterceptPoll();
+}
+
+async function proxyStart() {
+  const port = parseInt($("#proxy-port").value, 10) || 8080;
+  const { data } = await api("POST", "/api/proxy/start", { port });
+  if (data.error) toast(data.error, true); else toast("Proxy iniciado");
+  refreshProxyStatus();
+}
+async function proxyStop() {
+  await api("POST", "/api/proxy/stop", {});
+  toast("Proxy parado");
+  refreshProxyStatus();
+}
+async function interceptToggle() {
+  const on = $("#intercept-toggle").checked;
+  await api("POST", "/api/intercept/toggle", { on });
+  refreshProxyStatus();
+}
+async function browserLaunch() {
+  const engine = $("#browser-engine").value;
+  const channel = $("#browser-channel").value.trim() || undefined;
+  const { data } = await api("POST", "/api/browser/launch", { engine, channel });
+  if (data.error) toast(data.error, true); else toast("Navegador aberto pelo proxy");
+}
+
+function startInterceptPoll() {
+  if (interceptTimer) return;
+  interceptTimer = setInterval(pollIntercept, 900);
+  pollIntercept();
+}
+function stopInterceptPoll() {
+  if (interceptTimer) { clearInterval(interceptTimer); interceptTimer = null; }
+}
+async function pollIntercept() {
+  const { data } = await api("GET", "/api/intercept/queue");
+  const q = (data && data.queue) || [];
+  const panel = $("#intercept-panel");
+  if (!q.length) { panel.style.display = "none"; currentHeld = null; return; }
+  const held = q[0];
+  panel.style.display = "flex";
+  if (!currentHeld || currentHeld.id !== held.id) {
+    currentHeld = held;
+    const dir = held.direction === "request" ? "Requisição" : "Resposta";
+    $("#intercept-label").textContent = `Interceptado (${dir}) — ${held.method || held.status || ""} ${held.url}  · fila ${q.length}`;
+    $("#intercept-body").value = held.body || "";
+  }
+}
+async function resolveIntercept(action) {
+  if (!currentHeld) return;
+  const body = action === "drop" ? null : $("#intercept-body").value;
+  await api("POST", "/api/intercept/resolve", { id: currentHeld.id, action, body });
+  currentHeld = null;
+  pollIntercept();
 }
 
 async function loadEntryIntoRequest(e) {
@@ -248,7 +322,13 @@ $("#copy-curl").addEventListener("click", () => {
   navigator.clipboard?.writeText($("#curl-preview").textContent || "").then(() => toast("curl copiado"));
 });
 $("#history-refresh").addEventListener("click", loadHistory);
-$("#proxy-refresh").addEventListener("click", loadProxy);
+$("#proxy-start").addEventListener("click", proxyStart);
+$("#proxy-stop").addEventListener("click", proxyStop);
+$("#intercept-toggle").addEventListener("change", interceptToggle);
+$("#browser-launch").addEventListener("click", browserLaunch);
+$("#intercept-forward").addEventListener("click", () => resolveIntercept("forward"));
+$("#intercept-drop").addEventListener("click", () => resolveIntercept("drop"));
+$("#intercept-forward-all").addEventListener("click", async () => { await api("POST", "/api/intercept/forward-all", {}); currentHeld = null; pollIntercept(); });
 $("#scan-run").addEventListener("click", runScan);
 $("#scope-save").addEventListener("click", saveScope);
 $("#url").addEventListener("keydown", (e) => { if (e.key === "Enter") sendRequest(); });
@@ -262,4 +342,6 @@ document.addEventListener("keydown", (e) => {
   const tag = $("#engagement-tag");
   if (data.engagement) { tag.textContent = "engagement: " + data.engagement; tag.classList.add("eng"); }
   else { tag.textContent = "sem engagement"; }
+  const initial = (location.hash || "").replace("#", "");
+  if (["request", "history", "proxy", "scan", "scope"].includes(initial)) showView(initial);
 })();

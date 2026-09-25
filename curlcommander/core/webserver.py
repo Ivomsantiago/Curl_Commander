@@ -126,7 +126,37 @@ def handle_api(method: str, path: str, body: dict[str, Any], ctx: ToolContext) -
         return 400, {"error": f"bad request: {exc}"}
 
 
-def _make_handler(ctx: ToolContext) -> type[BaseHTTPRequestHandler]:
+def handle_proxy_api(method: str, path: str, body: dict[str, Any], controller: Any) -> tuple[int, dict[str, Any]]:
+    """Route the live-intercept proxy endpoints to the InterceptController."""
+    try:
+        if method == "GET" and path == "/api/proxy/status":
+            return 200, controller.status()
+        if method == "POST" and path == "/api/proxy/start":
+            controller.start(int(body.get("port", 8080)))
+            return 200, controller.status()
+        if method == "POST" and path == "/api/proxy/stop":
+            controller.stop()
+            return 200, controller.status()
+        if method == "POST" and path == "/api/intercept/toggle":
+            controller.set_intercept(bool(body.get("on", False)))
+            return 200, controller.status()
+        if method == "GET" and path == "/api/intercept/queue":
+            return 200, {"queue": controller.queue()}
+        if method == "POST" and path == "/api/intercept/resolve":
+            ok = controller.resolve(str(body.get("id", "")), str(body.get("action", "forward")), body.get("body"))
+            return (200, {"resolved": True}) if ok else (404, {"error": "flow não encontrado (já resolvido?)"})
+        if method == "POST" and path == "/api/intercept/forward-all":
+            controller.forward_all()
+            return 200, controller.status()
+        if method == "POST" and path == "/api/browser/launch":
+            controller.launch_browser(str(body.get("engine", "chromium")), body.get("channel"))
+            return 200, {"launched": True}
+        return 404, {"error": f"no such endpoint: {method} {path}"}
+    except Exception as exc:  # noqa: BLE001 - surface a clean message to the UI
+        return 400, {"error": str(exc)}
+
+
+def _make_handler(ctx: ToolContext, controller: Any) -> type[BaseHTTPRequestHandler]:
     class _Handler(BaseHTTPRequestHandler):
         server_version = f"CurlCommander/{__version__}"
 
@@ -193,7 +223,10 @@ def _make_handler(ctx: ToolContext) -> type[BaseHTTPRequestHandler]:
 
         def _dispatch(self, method: str, path: str, body: dict[str, Any]) -> None:
             try:
-                status, payload = handle_api(method, path, body, ctx)
+                if path.startswith(("/api/proxy/", "/api/intercept/", "/api/browser/")):
+                    status, payload = handle_proxy_api(method, path, body, controller)
+                else:
+                    status, payload = handle_api(method, path, body, ctx)
             except Exception:  # noqa: BLE001 - never leak exception text to the browser
                 self._send_json(500, {"error": "internal error"})
                 return
@@ -202,9 +235,18 @@ def _make_handler(ctx: ToolContext) -> type[BaseHTTPRequestHandler]:
     return _Handler
 
 
-def serve(ctx: ToolContext, host: str = "127.0.0.1", port: int = 8777) -> ThreadingHTTPServer:
-    """Start the threaded GUI server (non-blocking); returns the server object."""
-    handler = _make_handler(ctx)
+def serve(ctx: ToolContext, host: str = "127.0.0.1", port: int = 8777, controller: Any = None) -> ThreadingHTTPServer:
+    """Start the threaded GUI server (non-blocking); returns the server object.
+
+    ``controller`` is the live-intercept proxy controller; when omitted one is
+    created from the same repo/engagement/scope as ``ctx`` so the Proxy tab works
+    out of the box (it stays idle until the UI starts it).
+    """
+    if controller is None:
+        from curlcommander.core.webproxy import InterceptController
+
+        controller = InterceptController(repo=ctx.repo, engagement=ctx.engagement, scope_entries=ctx.scope_entries)
+    handler = _make_handler(ctx, controller)
     httpd = ThreadingHTTPServer((host, port), handler)
     thread = threading.Thread(target=httpd.serve_forever, name="curlcmd-gui", daemon=True)
     thread.start()
