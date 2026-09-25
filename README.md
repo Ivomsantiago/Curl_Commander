@@ -684,7 +684,16 @@ captura no histórico limitada ao escopo:
 curlcmd proxy --ca                       # imprime o caminho da CA + guia de instalação/remoção
 curlcmd proxy --port 8080 --scope scope.txt --engagement ENG \
         --replace 'resp:secret==>«X»' --launch-browser
+# Roteie o Firefox (ou qualquer motor) pelo proxy, ou um navegador do sistema:
+curlcmd proxy --engagement ENG --launch-browser --browser-engine firefox
+curlcmd proxy --engagement ENG --launch-browser --browser-channel chrome
 ```
+
+`--launch-browser` abre um navegador já roteado pelo proxy e com a CA confiada.
+`--browser-engine` escolhe `chromium` (padrão), `firefox` ou `webkit`;
+`--browser-channel` usa um navegador **instalado no sistema** (chrome/msedge/
+firefox) em vez do embutido. Motores além do Chromium podem exigir
+`playwright install firefox`/`webkit`.
 
 > **Aviso da CA.** Instalar a CA do proxy no seu SO/navegador deixa ela
 > descriptografar o seu TLS — confie nela só para testes e **remova depois**. Só

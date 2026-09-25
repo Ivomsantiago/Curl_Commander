@@ -34,7 +34,22 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   `core/mcp_tools.py` (testável sem o SDK) e o wrapper FastMCP em
   `core/mcp_server.py`, importado de forma preguiçosa — mesmo padrão do proxy.
 
+* **Integração com múltiplos navegadores.** A `BrowserSession` agora escolhe o
+  motor (`chromium` — padrão —, `firefox` ou `webkit`) e pode lançar um
+  navegador **instalado no sistema** via `channel` (chrome/msedge/firefox), sem
+  baixar o navegador embutido. O proxy interceptador expõe isso em
+  `curlcmd proxy --launch-browser --browser-engine firefox` e
+  `--browser-channel chrome`. Toda navegação continua checada contra o escopo.
+
 ### Corrigido
+
+* **Match & Replace da aba Proxy (TUI) nunca era aplicado.** A chamada a
+  `run_proxy` passava as regras na posição de `scope_entries` (e uma lista vazia
+  na de `rules`), então nenhuma substituição acontecia — e o uso real teria
+  quebrado ao tentar tratar uma regra como host de escopo. A chamada foi
+  corrigida e o campo passou a aceitar a sintaxe oficial
+  `[req|resp:]padrão==>substituição` (além do `k=v` legado, agora aplicado aos
+  dois lados).
 
 * O instalador do Windows não encerra mais depois de uma instalação bem-sucedida
   via `uv` quando `uv tool update-shell` escreve a mensagem informativa

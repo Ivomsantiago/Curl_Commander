@@ -76,3 +76,29 @@ def test_chromium_executable_none_when_neither_env_var_set(monkeypatch):
     monkeypatch.delenv("CURLCOMMANDER_CHROMIUM", raising=False)
     monkeypatch.delenv("PLAYWRIGHT_BROWSERS_PATH", raising=False)
     assert browser.chromium_executable() is None
+
+
+# --- engine / channel selection (constructor only, no Playwright needed) ----
+
+
+def test_browser_session_defaults_to_chromium():
+    s = browser.BrowserSession()
+    assert s.engine == "chromium"
+    assert s.channel is None
+
+
+def test_browser_session_accepts_firefox_and_webkit():
+    assert browser.BrowserSession(engine="firefox").engine == "firefox"
+    assert browser.BrowserSession(engine="webkit").engine == "webkit"
+
+
+def test_browser_session_rejects_unknown_engine():
+    import pytest
+
+    with pytest.raises(browser.BrowserError):
+        browser.BrowserSession(engine="lynx")
+
+
+def test_browser_session_keeps_channel():
+    s = browser.BrowserSession(engine="chromium", channel="chrome")
+    assert s.channel == "chrome"

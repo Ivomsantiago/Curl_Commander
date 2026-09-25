@@ -173,6 +173,8 @@ async def run_proxy(
     engagement: str = "",
     launch_browser: bool = False,
     intercept_hook: Any = None,
+    browser_engine: str = "chromium",
+    browser_channel: str | None = None,
 ) -> None:
     """Run the intercepting proxy until interrupted (Ctrl-C)."""
     require_proxy()
@@ -188,7 +190,7 @@ async def run_proxy(
 
     browser_ctx = None
     if launch_browser:
-        browser_ctx = await _launch_browser_through(port, scope_entries)
+        browser_ctx = await _launch_browser_through(port, scope_entries, engine=browser_engine, channel=browser_channel)
     try:
         await master.run()
     finally:
@@ -196,10 +198,25 @@ async def run_proxy(
             await browser_ctx.__aexit__(None, None, None)
 
 
-async def _launch_browser_through(port: int, scope_entries: list[str]) -> Any:
-    """Open the bundled Chromium routed through the proxy (CA already trusted)."""
+async def _launch_browser_through(
+    port: int,
+    scope_entries: list[str],
+    engine: str = "chromium",
+    channel: str | None = None,
+) -> Any:
+    """Open a browser routed through the proxy (CA already trusted).
+
+    ``engine`` selects chromium/firefox/webkit; ``channel`` launches a
+    system-installed browser (chrome/msedge/firefox) instead of the bundled one.
+    """
     from curlcommander.core.browser import BrowserSession
 
-    session = BrowserSession(headless=False, proxy=f"http://127.0.0.1:{port}", scope_entries=scope_entries)
+    session = BrowserSession(
+        headless=False,
+        proxy=f"http://127.0.0.1:{port}",
+        scope_entries=scope_entries,
+        engine=engine,
+        channel=channel,
+    )
     await session.__aenter__()
     return session

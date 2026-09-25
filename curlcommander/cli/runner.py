@@ -1271,6 +1271,8 @@ def _run_proxy(args, repo) -> int:
                 repo,
                 engagement=args.engagement,
                 launch_browser=getattr(args, "launch_browser", False),
+                browser_engine=getattr(args, "browser_engine", "chromium"),
+                browser_channel=getattr(args, "browser_channel", None),
             )
         )
     except KeyboardInterrupt:

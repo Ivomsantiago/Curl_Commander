@@ -22,6 +22,17 @@ class BrowserError(RuntimeError):
     pass
 
 
+# Playwright engines CurlCommander can drive. Chromium is the default and the
+# one the standalone binary can point at a system install; firefox/webkit need
+# their own `playwright install <engine>` and are opt-in.
+SUPPORTED_ENGINES: tuple[str, ...] = ("chromium", "firefox", "webkit")
+
+# Chromium "channels" = a system-installed browser Playwright launches instead
+# of its bundled build (no download needed). Firefox stable is exposed the same
+# way in recent Playwright via channel="firefox".
+CHROMIUM_CHANNELS: tuple[str, ...] = ("chrome", "chrome-beta", "chrome-dev", "msedge", "msedge-beta")
+
+
 def browser_available() -> bool:
     try:
         import playwright.async_api  # noqa: F401
@@ -82,7 +93,13 @@ class BrowserSession:
         har_path: str | None = None,
         trace_path: str | None = None,
         extra_headers: HeaderList | None = None,
+        engine: str = "chromium",
+        channel: str | None = None,
     ) -> None:
+        if engine not in SUPPORTED_ENGINES:
+            raise BrowserError(f"unsupported browser engine {engine!r} (choose: {', '.join(SUPPORTED_ENGINES)})")
+        self.engine = engine
+        self.channel = channel
         self.headless = headless
         self.proxy = proxy
         self.cookies = cookies
@@ -107,12 +124,19 @@ class BrowserSession:
 
         self._pw = await async_playwright().start()
         launch_kwargs: dict[str, Any] = {"headless": self.headless}
-        exe = chromium_executable()
-        if exe:
-            launch_kwargs["executable_path"] = exe
+        # A system channel (real Chrome/Edge) takes precedence over locating a
+        # bundled Chromium; a discovered executable only applies to the bundled
+        # Chromium engine. Firefox/WebKit use Playwright's own build.
+        if self.channel:
+            launch_kwargs["channel"] = self.channel
+        elif self.engine == "chromium":
+            exe = chromium_executable()
+            if exe:
+                launch_kwargs["executable_path"] = exe
         if self.proxy:
             launch_kwargs["proxy"] = {"server": self.proxy}
-        self._browser = await self._pw.chromium.launch(**launch_kwargs)
+        browser_type = getattr(self._pw, self.engine)
+        self._browser = await browser_type.launch(**launch_kwargs)
         ctx_kwargs: dict[str, Any] = {"ignore_https_errors": True}
         if self.user_agent:
             ctx_kwargs["user_agent"] = self.user_agent

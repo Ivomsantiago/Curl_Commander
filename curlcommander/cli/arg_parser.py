@@ -416,7 +416,18 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
         metavar="REGRA",
         help="Match-and-replace: [req|resp:]padrão==>substituição (repetível)",
     )
-    prox.add_argument("--launch-browser", action="store_true", help="Abre o Chromium roteado pelo proxy")
+    prox.add_argument("--launch-browser", action="store_true", help="Abre um navegador roteado pelo proxy")
+    prox.add_argument(
+        "--browser-engine",
+        choices=["chromium", "firefox", "webkit"],
+        default="chromium",
+        help="Motor do navegador para --launch-browser (padrão: chromium)",
+    )
+    prox.add_argument(
+        "--browser-channel",
+        metavar="CANAL",
+        help="Usa um navegador instalado no sistema (chrome/msedge/firefox) em vez do embutido",
+    )
     prox.add_argument("--ca", action="store_true", help="Imprime o caminho da CA + guia de instalação/remoção e sai")
     prox.add_argument(
         "--config",
@@ -425,9 +436,7 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     )
 
     # mcp (native MCP server: let any AI drive the tool over stdio)
-    mcp_p = subparsers.add_parser(
-        "mcp", help="Roda o servidor MCP nativo (conecta qualquer I.A. via stdio)"
-    )
+    mcp_p = subparsers.add_parser("mcp", help="Roda o servidor MCP nativo (conecta qualquer I.A. via stdio)")
     mcp_p.add_argument("--scope", metavar="CAMINHO", help="Confina a I.A. aos hosts em escopo (arquivo)")
     mcp_p.add_argument("--engagement", metavar="LABEL", help="Rótulo de engajamento (isola o histórico)")
 
