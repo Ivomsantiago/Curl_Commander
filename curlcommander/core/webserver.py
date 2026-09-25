@@ -60,10 +60,18 @@ _CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
 }
 
-# The web UI is a fixed, known set of assets. Serving is restricted to this
-# allowlist (never an arbitrary path derived from the request) so a crafted URL
-# cannot read files outside the bundle — no path traversal is possible.
-_STATIC_FILES: frozenset[str] = frozenset({"index.html", "app.js", "style.css"})
+# The web UI is a fixed, known set of assets. A request can only *select* among
+# them by exact name; the filesystem path is always built from a string literal,
+# never from request data, so no attacker-controlled value ever reaches a path
+# expression (no traversal is possible, by construction).
+def _static_path(name: str) -> Path | None:
+    if name == "index.html":
+        return WEBUI_DIR / "index.html"
+    if name == "app.js":
+        return WEBUI_DIR / "app.js"
+    if name == "style.css":
+        return WEBUI_DIR / "style.css"
+    return None
 
 
 def _run(coro: Any) -> Any:
@@ -131,17 +139,12 @@ def _make_handler(ctx: ToolContext) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(data)
 
         def _send_static(self, rel: str) -> None:
-            # Reduce the request to a bare filename and serve it only if it is
-            # one of the known bundled assets. basename() strips any directory
-            # component and the allowlist membership check means the value used
-            # to build the path is always one of a fixed set of constants — so
-            # no attacker-controlled path ever reaches the filesystem.
-            name = os.path.basename(rel.strip("/"))
-            if name not in _STATIC_FILES:
-                self._send_json(404, {"error": "not found"})
-                return
-            target = WEBUI_DIR / name
-            if not target.is_file():
+            # Map the request to one of the known assets by exact name. The path
+            # returned by _static_path is built from a string literal, so the
+            # request never contributes to a filesystem path — traversal is
+            # impossible regardless of what 'rel' contains.
+            target = _static_path(os.path.basename(rel.strip("/")))
+            if target is None or not target.is_file():
                 self._send_json(404, {"error": "not found"})
                 return
             data = target.read_bytes()
