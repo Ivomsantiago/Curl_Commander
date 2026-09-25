@@ -60,6 +60,7 @@ _CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
 }
 
+
 # The web UI is a fixed, known set of assets. A request can only *select* among
 # them by exact name; the filesystem path is always built from a string literal,
 # never from request data, so no attacker-controlled value ever reaches a path
