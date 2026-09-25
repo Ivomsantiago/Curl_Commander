@@ -5,6 +5,7 @@ end-to-end smoke test boots the threaded server and hits it over HTTP.
 """
 
 import json
+import urllib.error
 import urllib.request
 
 import httpx
@@ -57,6 +58,33 @@ def test_send_and_history_roundtrip(tmp_path):
     status, body = webserver.handle_api("GET", "/api/history", {}, ctx)
     assert len(body["entries"]) == 1
     ctx.repo.close()
+
+
+def test_static_serving_is_allowlisted(tmp_path):
+    # Known assets serve; anything else (including traversal) is 404 — the
+    # server never builds a filesystem path from an attacker-controlled string.
+    ctx = ToolContext()
+    httpd = webserver.serve(ctx, host="127.0.0.1", port=0)
+    try:
+        port = httpd.server_address[1]
+
+        def get(p):
+            req = urllib.request.Request(f"http://127.0.0.1:{port}{p}")
+            try:
+                with urllib.request.urlopen(req) as r:
+                    return r.status
+            except urllib.error.HTTPError as e:
+                return e.code
+
+        assert get("/static/app.js") == 200
+        assert get("/static/style.css") == 200
+        # Traversal / unknown files are refused.
+        assert get("/static/..%2f..%2f..%2fetc%2fpasswd") == 404
+        assert get("/static/../../../../etc/passwd") == 404
+        assert get("/static/webserver.py") == 404
+        assert get("/etc/passwd") == 404
+    finally:
+        httpd.shutdown()
 
 
 @respx.mock

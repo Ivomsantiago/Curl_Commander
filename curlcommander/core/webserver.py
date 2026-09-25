@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -58,6 +59,11 @@ _CONTENT_TYPES = {
     ".ico": "image/x-icon",
     ".json": "application/json; charset=utf-8",
 }
+
+# The web UI is a fixed, known set of assets. Serving is restricted to this
+# allowlist (never an arbitrary path derived from the request) so a crafted URL
+# cannot read files outside the bundle — no path traversal is possible.
+_STATIC_FILES: frozenset[str] = frozenset({"index.html", "app.js", "style.css"})
 
 
 def _run(coro: Any) -> Any:
@@ -125,9 +131,17 @@ def _make_handler(ctx: ToolContext) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(data)
 
         def _send_static(self, rel: str) -> None:
-            # Serve only files inside WEBUI_DIR (no traversal).
-            target = (WEBUI_DIR / rel.lstrip("/")).resolve()
-            if not str(target).startswith(str(WEBUI_DIR)) or not target.is_file():
+            # Reduce the request to a bare filename and serve it only if it is
+            # one of the known bundled assets. basename() strips any directory
+            # component and the allowlist membership check means the value used
+            # to build the path is always one of a fixed set of constants — so
+            # no attacker-controlled path ever reaches the filesystem.
+            name = os.path.basename(rel.strip("/"))
+            if name not in _STATIC_FILES:
+                self._send_json(404, {"error": "not found"})
+                return
+            target = WEBUI_DIR / name
+            if not target.is_file():
                 self._send_json(404, {"error": "not found"})
                 return
             data = target.read_bytes()
@@ -172,8 +186,8 @@ def _make_handler(ctx: ToolContext) -> type[BaseHTTPRequestHandler]:
         def _dispatch(self, method: str, path: str, body: dict[str, Any]) -> None:
             try:
                 status, payload = handle_api(method, path, body, ctx)
-            except Exception as exc:  # noqa: BLE001 - never leak a traceback to the browser
-                self._send_json(500, {"error": f"internal error: {exc}"})
+            except Exception:  # noqa: BLE001 - never leak exception text to the browser
+                self._send_json(500, {"error": "internal error"})
                 return
             self._send_json(status, payload)
 
