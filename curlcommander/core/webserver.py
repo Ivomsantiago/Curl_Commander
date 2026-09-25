@@ -25,7 +25,30 @@ from curlcommander import __version__
 from curlcommander.core import mcp_tools
 from curlcommander.core.mcp_tools import MCPToolError, ToolContext
 
-WEBUI_DIR = Path(__file__).resolve().parent.parent / "webui"
+
+def _webui_dir() -> Path:
+    """Locate the bundled ``webui/`` assets, working both from source and from
+    a PyInstaller standalone binary.
+
+    ``importlib.resources`` is the frozen-safe path (the same one
+    ``payload_catalog`` uses for ``curlcommander/data``); PyInstaller extracts
+    ``collect_data_files("curlcommander")`` into ``_MEIPASS/curlcommander/webui``
+    and resources resolves there. The ``__file__`` form is only a last resort
+    for exotic layouts.
+    """
+    try:
+        from importlib import resources
+
+        base = resources.files("curlcommander").joinpath("webui")
+        p = Path(str(base))
+        if p.is_dir():
+            return p
+    except (ModuleNotFoundError, AttributeError, TypeError, OSError):
+        pass
+    return Path(__file__).resolve().parent.parent / "webui"
+
+
+WEBUI_DIR = _webui_dir()
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",

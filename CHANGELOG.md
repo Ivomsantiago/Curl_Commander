@@ -31,6 +31,10 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   `curlcmd gui [--port 8777] [--engagement ENG] [--scope arquivo]`; abre o
   navegador automaticamente (`--no-browser` desativa). O backend
   (`core/webserver.py`) tem um roteador puro `handle_api()` testado sem socket.
+  Os assets `webui/` são localizados via `importlib.resources` (igual aos dados
+  de payloads), então a GUI funciona também no **binário standalone** — validado
+  construindo o executável Linux com PyInstaller e servindo a UI + API a partir
+  dele. Windows/Linux/macOS são montados pelo workflow de release a cada tag.
 
 * **Servidor MCP nativo (`curlcmd mcp`)** — conecta qualquer I.A. compatível com
   o Model Context Protocol (Claude Desktop, Cursor, Continue, …) à ferramenta
