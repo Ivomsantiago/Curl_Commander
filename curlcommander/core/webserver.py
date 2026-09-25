@@ -245,7 +245,12 @@ def serve(ctx: ToolContext, host: str = "127.0.0.1", port: int = 8777, controlle
     if controller is None:
         from curlcommander.core.webproxy import InterceptController
 
-        controller = InterceptController(repo=ctx.repo, engagement=ctx.engagement, scope_entries=ctx.scope_entries)
+        controller = InterceptController(
+            repo=ctx.repo,
+            engagement=ctx.engagement,
+            scope_entries=ctx.scope_entries,
+            scope_provider=lambda: ctx.scope_entries,  # honour GUI scope edits at start
+        )
     handler = _make_handler(ctx, controller)
     httpd = ThreadingHTTPServer((host, port), handler)
     thread = threading.Thread(target=httpd.serve_forever, name="curlcmd-gui", daemon=True)

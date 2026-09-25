@@ -270,7 +270,13 @@ async function pollIntercept() {
 }
 async function resolveIntercept(action) {
   if (!currentHeld) return;
-  const body = action === "drop" ? null : $("#intercept-body").value;
+  // Send the edited body only when it actually changed; otherwise null so the
+  // backend forwards the original bytes untouched (binary uploads/images).
+  let body = null;
+  if (action !== "drop") {
+    const edited = $("#intercept-body").value;
+    body = edited === (currentHeld.body || "") ? null : edited;
+  }
   await api("POST", "/api/intercept/resolve", { id: currentHeld.id, action, body });
   currentHeld = null;
   pollIntercept();

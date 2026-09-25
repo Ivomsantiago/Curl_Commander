@@ -122,6 +122,39 @@ async def test_open_redirect_detected_only_for_redirect_param():
     assert any(f.category == "active-open-redirect" for f in findings)
 
 
+def test_injectables_include_params():
+    cfg = RequestConfig(method="GET", url="https://x/s", params=[("q", "1"), ("p", "2")])
+    inj = _injectables(cfg)
+    assert Injectable("param", "q") in inj
+    assert Injectable("param", "p") in inj
+
+
+async def test_active_scan_probes_params_field():
+    async def sender(cfg):
+        # Reflect the value stored in RequestConfig.params (as send() would send).
+        val = dict(cfg.params).get("q", "")
+        return _resp(body=f"echo {val}")
+
+    cfg = RequestConfig(method="GET", url="https://x/s", params=[("q", "1")])
+    findings = await active_scan(cfg, sender=sender)
+    assert any(f.category == "active-xss" for f in findings)
+
+
+async def test_two_vulnerable_params_both_reported():
+    async def sender(cfg):
+        # Both q and p reflect their query values verbatim.
+        q = _qval(cfg.url, "q") or ""
+        p = _qval(cfg.url, "p") or ""
+        return _resp(body=f"{q}|{p}")
+
+    cfg = RequestConfig(method="GET", url="https://x/s?q=1&p=2")
+    findings = await active_scan(cfg, sender=sender)
+    xss = [f for f in findings if f.category == "active-xss"]
+    # One finding per vulnerable parameter (dedup keys on detail = param name).
+    details = {f.detail for f in xss}
+    assert len(details) == 2
+
+
 async def test_clean_app_has_no_findings():
     async def sender(cfg):
         # Reflects nothing back and never errors.

@@ -76,9 +76,19 @@ def apply_resolution(held: _Held, action: str, body: str | None) -> None:
 class InterceptController:
     """Owns the background proxy and the intercept queue for the web GUI."""
 
-    def __init__(self, repo: Any = None, engagement: str = "", scope_entries: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        repo: Any = None,
+        engagement: str = "",
+        scope_entries: list[str] | None = None,
+        scope_provider: Any = None,
+    ) -> None:
         self.repo = repo
         self.engagement = engagement
+        # ``scope_provider`` (a zero-arg callable) is read at start() so the
+        # proxy honours a scope the user edited in the GUI *after* the server
+        # started; ``scope_entries`` is the static fallback used by tests.
+        self._scope_provider = scope_provider
         self.scope_entries = scope_entries or []
         self.port = 8080
         self.running = False
@@ -99,6 +109,11 @@ class InterceptController:
 
         return pm.proxy_available()
 
+    def _refresh_scope(self) -> None:
+        """Pull the current scope from the provider (GUI edits win over startup)."""
+        if self._scope_provider is not None:
+            self.scope_entries = list(self._scope_provider())
+
     # -- lifecycle ----------------------------------------------------------
 
     def start(self, port: int = 8080) -> None:
@@ -107,6 +122,7 @@ class InterceptController:
         pm.require_proxy()
         if self.running:
             return
+        self._refresh_scope()  # the user may have edited scope in the GUI
         self.port = port
         self._error = None
         ready = threading.Event()
@@ -230,7 +246,11 @@ class InterceptController:
             raise RuntimeError("proxy não está rodando")
         from curlcommander.core.proxy import _launch_browser_through
 
-        asyncio.run_coroutine_threadsafe(
+        future = asyncio.run_coroutine_threadsafe(
             _launch_browser_through(self.port, self.scope_entries, engine=engine, channel=channel),
             self._loop,
         )
+        # Wait for the launch to actually happen so a failure (missing Playwright
+        # browser, invalid channel) surfaces to the caller instead of a false
+        # "launched": true.
+        future.result(timeout=60)

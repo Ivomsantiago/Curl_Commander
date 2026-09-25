@@ -119,6 +119,18 @@ def test_controller_status_shape():
     assert st["running"] is False
 
 
+def test_refresh_scope_reads_live_provider():
+    live = ["a.example"]
+    ctrl = InterceptController(scope_provider=lambda: live)
+    ctrl._refresh_scope()
+    assert ctrl.scope_entries == ["a.example"]
+    # A later GUI edit replaces the list; the controller picks it up on refresh.
+    live = ["b.example", "c.example"]
+    ctrl = InterceptController(scope_provider=lambda: live)
+    ctrl._refresh_scope()
+    assert ctrl.scope_entries == ["b.example", "c.example"]
+
+
 def test_available_matches_proxy(monkeypatch):
     from curlcommander.core import proxy as pm
 

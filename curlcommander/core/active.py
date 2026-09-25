@@ -17,6 +17,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from curlcommander.core.headers import HeaderList
 from curlcommander.core.http_client import send
 from curlcommander.core.passive import Finding
 from curlcommander.core.request_model import RequestConfig, ResponseResult
@@ -55,6 +56,11 @@ def _injectables(config: RequestConfig) -> list[Injectable]:
     query = urlsplit(config.url).query
     for name, _ in parse_qsl(query, keep_blank_values=True):
         out.append(Injectable("query", name))
+    # Importers (curl/OpenAPI/Postman) put query pairs in config.params, which
+    # http_client.send() appends to the URL — scan those too, or a scan of an
+    # imported request would make zero probes.
+    for name, _ in config.params:
+        out.append(Injectable("param", name))
     if config.body_type == "form" and config.body:
         for name, _ in parse_qsl(config.body, keep_blank_values=True):
             out.append(Injectable("form", name))
@@ -77,10 +83,15 @@ def _mutate(config: RequestConfig, inj: Injectable, value: str) -> RequestConfig
         pairs = parse_qsl(parts.query, keep_blank_values=True)
         new_pairs = [(k, value if k == inj.name else v) for k, v in pairs]
         data["url"] = urlunsplit(parts._replace(query=urlencode(new_pairs)))
-    else:  # form
-        pairs = parse_qsl(config.body, keep_blank_values=True)
-        new_pairs = [(k, value if k == inj.name else v) for k, v in pairs]
-        data["body"] = urlencode(new_pairs)
+        return RequestConfig.from_dict(data)
+    if inj.location == "param":
+        new = RequestConfig.from_dict(data)
+        new.params = HeaderList([(k, value if k == inj.name else v) for k, v in config.params])
+        return new
+    # form
+    pairs = parse_qsl(config.body, keep_blank_values=True)
+    new_pairs = [(k, value if k == inj.name else v) for k, v in pairs]
+    data["body"] = urlencode(new_pairs)
     return RequestConfig.from_dict(data)
 
 
@@ -166,12 +177,14 @@ async def active_scan(config: RequestConfig, sender: Sender | None = None, max_p
     findings: list[Finding] = []
     for inj in injectables:
         findings.extend(await _check_param(config, inj, tx))
-    # De-dupe identical findings (same category + title), most severe first.
+    # De-dupe identical findings, most severe first. The key includes ``detail``
+    # (which carries the parameter name), so two vulnerable parameters hitting
+    # the same check are both kept — the per-parameter contract.
     order = {"high": 0, "medium": 1, "low": 2, "info": 3}
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str, str, str]] = set()
     uniq: list[Finding] = []
     for f in findings:
-        key = (f.severity, f.category, f.title)
+        key = (f.severity, f.category, f.title, f.detail)
         if key not in seen:
             seen.add(key)
             uniq.append(f)
