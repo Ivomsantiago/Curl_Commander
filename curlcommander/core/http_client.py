@@ -11,12 +11,40 @@ from curlcommander.core.request_model import RequestConfig, ResponseResult
 from curlcommander.core.response_formatter import decode_body
 
 
+def _http2_error(config: RequestConfig) -> ResponseResult | None:
+    """A clean ResponseResult when HTTP/2 is requested but the h2 extra is absent.
+
+    httpx raises a raw ImportError at client construction time in that case;
+    surfacing the standard feature message instead keeps the CLI/TUI/MCP from
+    showing a traceback for a missing optional extra.
+    """
+    if not config.http2:
+        return None
+    from curlcommander.core import features
+
+    if features.available("http2"):
+        return None
+    return ResponseResult(
+        status_code=None,
+        reason="",
+        headers={},
+        body="",
+        content_type="",
+        duration_ms=0.0,
+        size_bytes=0,
+        error=features.missing_message("http2"),
+    )
+
+
 async def stream_send(config: RequestConfig, on_line: Callable[[str], None]) -> ResponseResult:
     """Stream a response line by line (NDJSON/SSE) without buffering it all.
 
     Calls ``on_line(str)`` for each decoded line as it arrives. Returns a
     ResponseResult with an empty body (content was streamed, not stored).
     """
+    guard = _http2_error(config)
+    if guard is not None:
+        return guard
     resolved = resolve_auth(config)
     start = time.perf_counter()
     proxy = resolved.proxy or None
@@ -62,6 +90,9 @@ def _resolve_jar_path(config: RequestConfig) -> str:
 
 
 async def send(config: RequestConfig) -> ResponseResult:
+    guard = _http2_error(config)
+    if guard is not None:
+        return guard
     resolved = resolve_auth(config)
 
     auth: tuple[str, str] | None = None

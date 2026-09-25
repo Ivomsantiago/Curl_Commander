@@ -81,9 +81,9 @@ class ProxyPanel(Widget):
                 tooltip="Domínios separados por vírgula para dropar automaticamente",
             )
             yield Input(
-                placeholder="Match & Replace (ex: secret=X)",
+                placeholder="Match & Replace (ex: secret==>X  ou  req:foo==>bar), vírgula separa regras",
                 id="px-match-replace",
-                tooltip="Ainda não implementado visualmente",
+                tooltip="padrão==>substituição, opcionalmente prefixado por req:/resp:. 'k=v' também aceito.",
             )
         yield Static("", id="px-ca")
         with Vertical(id="px-intercept-container"):
@@ -252,19 +252,13 @@ class ProxyPanel(Widget):
             await ev.wait()
 
         try:
-            match_replace = self.query_one("#px-match-replace", Input).value.strip()
-            rules = []
-            if match_replace:
-                for rule in match_replace.split(","):
-                    rule = rule.strip()
-                    if "=" in rule:
-                        k, v = rule.split("=", 1)
-                        rules.append(proxymod.MatchReplace(k, v, "req"))
-                        rules.append(proxymod.MatchReplace(k, v, "resp"))
+            rules = _parse_match_replace(self.query_one("#px-match-replace", Input).value.strip())
 
             # Capture everything (scope marking is done in the panel for
             # transparency); engagement label from the UI is n/a here.
-            await proxymod.run_proxy(port, rules, [], sink, engagement="gui", intercept_hook=intercept_hook)
+            # scope_entries is [] so nothing is tunnelled; rules carries the
+            # match-and-replace; sink is the repo-shaped capture target.
+            await proxymod.run_proxy(port, [], rules, sink, engagement="gui", intercept_hook=intercept_hook)
         except Exception as exc:  # noqa: BLE001
             self.query_one("#px-ca", Static).update(f"[red]Proxy parou:[/red] {exc}")
         finally:
@@ -314,3 +308,32 @@ def _to_int(value: str, default: int) -> int:
         return int(value)
     except (ValueError, TypeError):
         return default
+
+
+def _parse_match_replace(spec: str) -> list[Any]:
+    """Parse the panel's Match & Replace input into core MatchReplace rules.
+
+    Accepts comma-separated rules in the core's ``[req|resp:]pattern==>replacement``
+    syntax; for backward compatibility a bare ``k=v`` becomes ``k==>v`` applied to
+    both request and response. Malformed fragments are skipped, never fatal.
+    """
+    from curlcommander.core import proxy as proxymod
+
+    rules: list[Any] = []
+    if not spec:
+        return rules
+    for raw in spec.split(","):
+        frag = raw.strip()
+        if not frag:
+            continue
+        if "==>" in frag:
+            try:
+                rules.append(proxymod.parse_rule(frag))
+            except proxymod.ProxyError:
+                continue
+        elif "=" in frag:
+            k, v = frag.split("=", 1)
+            k, v = k.strip(), v.strip()
+            if k:
+                rules.append(proxymod.MatchReplace(k, v, "both"))
+    return rules

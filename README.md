@@ -86,12 +86,13 @@ gerenciado com um atalho `curlcmd` — resolve o seu PATH, é idempotente e acei
 2. [Primeiros passos: `setup` e `doctor`](#2-primeiros-passos-setup-e-doctor)
 3. [Segurança](#3-segurança)
 4. [CLI](#4-cli)
-5. [Interface no terminal (TUI)](#5-interface-no-terminal-tui)
+5. [Interfaces: gráfica (GUI) e terminal (TUI)](#5-interfaces-gráfica-gui-e-terminal-tui)
 6. [Armazenamento do histórico](#6-armazenamento-do-histórico)
 7. [Bug bounty — payloads → fuzz → discover](#7-bug-bounty--payloads--fuzz--discover)
 8. [Validação por navegador e proxy interceptador](#8-validação-por-navegador-e-proxy-interceptador)
-9. [Desenvolvimento](#9-desenvolvimento)
-10. [Roadmap](#10-roadmap)
+9. [MCP nativo — conectar uma I.A.](#9-mcp-nativo--conectar-uma-ia)
+10. [Desenvolvimento](#10-desenvolvimento)
+11. [Roadmap](#11-roadmap)
 
 Novo por aqui? Comece pelo guia rápido em [`docs/COMECE-AQUI.md`](docs/COMECE-AQUI.md).
 
@@ -424,7 +425,26 @@ Códigos de saída: `0` ok · `1` uso/parse · `2` rede/DNS/TLS/timeout ·
 
 ---
 
-## 5. Interface no terminal (TUI)
+## 5. Interfaces: gráfica (GUI) e terminal (TUI)
+
+### Interface gráfica (GUI no navegador)
+
+```bash
+curlcmd gui                                  # abre a GUI no navegador
+curlcmd gui --port 8777 --engagement ENG --scope escopo.txt
+curlcmd gui --no-browser                     # só sobe o servidor, imprime a URL
+```
+
+`curlcmd gui` sobe um servidor local (stdlib, **sem framework novo**) e abre uma
+interface **gráfica** no navegador — não é a TUI de terminal. A UI (tema escuro)
+tem barra lateral com: **Requisição/Repeater** (método, URL, headers, body,
+prévia de `curl` ao vivo, importar `curl`), **Resposta** (status/headers/corpo),
+**Histórico** (clique numa linha para carregar no Repeater), **Proxy** (mostra o
+tráfego capturado; inicie o proxy pela CLI e capture com o navegador roteado) e
+**Escopo** (aplica também às ferramentas da IA via MCP). A API JSON por trás
+(`/api/...`) reusa a mesma camada de lógica do servidor MCP.
+
+### Interface no terminal (TUI)
 
 ```bash
 curlcmd --gui
@@ -683,7 +703,16 @@ captura no histórico limitada ao escopo:
 curlcmd proxy --ca                       # imprime o caminho da CA + guia de instalação/remoção
 curlcmd proxy --port 8080 --scope scope.txt --engagement ENG \
         --replace 'resp:secret==>«X»' --launch-browser
+# Roteie o Firefox (ou qualquer motor) pelo proxy, ou um navegador do sistema:
+curlcmd proxy --engagement ENG --launch-browser --browser-engine firefox
+curlcmd proxy --engagement ENG --launch-browser --browser-channel chrome
 ```
+
+`--launch-browser` abre um navegador já roteado pelo proxy e com a CA confiada.
+`--browser-engine` escolhe `chromium` (padrão), `firefox` ou `webkit`;
+`--browser-channel` usa um navegador **instalado no sistema** (chrome/msedge/
+firefox) em vez do embutido. Motores além do Chromium podem exigir
+`playwright install firefox`/`webkit`.
 
 > **Aviso da CA.** Instalar a CA do proxy no seu SO/navegador deixa ela
 > descriptografar o seu TLS — confie nela só para testes e **remova depois**. Só
@@ -693,7 +722,57 @@ curlcmd proxy --port 8080 --scope scope.txt --engagement ENG \
 
 ---
 
-## 9. Desenvolvimento
+## 9. MCP nativo — conectar uma I.A.
+
+O CurlCommander é também um **servidor MCP** (Model Context Protocol): qualquer
+I.A. compatível — Claude Desktop, Cursor, Continue, e outros clientes MCP —
+passa a operar a ferramenta diretamente, sem cola nem scripts. Instale o extra e
+rode o servidor por stdio:
+
+```bash
+curlcmd setup --mcp                 # instala o extra [mcp]
+curlcmd mcp --engagement ENG --scope escopo.txt
+```
+
+`--scope` **confina a I.A. aos hosts autorizados**: toda requisição é checada
+contra o escopo antes de sair (fora do escopo é recusada com mensagem clara), e
+tudo é gravado no mesmo histórico do CLI/TUI sob o `--engagement`, para
+auditoria posterior. Ataques de Intruder disparados pela I.A. têm teto de
+requisições por sessão.
+
+Ferramentas expostas à I.A.:
+
+| Ferramenta | O que faz |
+|-----------|-----------|
+| `send_request` | Envia uma requisição HTTP e devolve status/headers/corpo + o `curl` |
+| `build_curl` | Gera o `curl` fiel de uma requisição sem enviá-la |
+| `import_curl` | Converte um comando `curl` em config estruturada |
+| `passive_scan` | Envia e devolve achados passivos (headers, cookies, CORS, segredos, fingerprint) |
+| `intruder_attack` | Roda Intruder (sniper/battering-ram/pitchfork/cluster-bomb) com wordlists ou categorias do catálogo |
+| `set_scope` / `get_scope` | Lê/ajusta o escopo ao qual a I.A. está confinada |
+| `list_payload_categories` | Lista as categorias de payload disponíveis |
+| `history_list` / `history_get` | Consulta o histórico de requisições |
+
+Exemplo de configuração num cliente MCP (bloco `mcpServers`):
+
+```json
+{
+  "mcpServers": {
+    "curlcommander": {
+      "command": "curlcmd",
+      "args": ["mcp", "--engagement", "ENG", "--scope", "escopo.txt"]
+    }
+  }
+}
+```
+
+A lógica das ferramentas vive em `core/mcp_tools.py` (testável sem o SDK `mcp`) e
+o wrapper FastMCP em `core/mcp_server.py`, importado de forma preguiçosa — mesmo
+padrão do proxy interceptador.
+
+---
+
+## 10. Desenvolvimento
 
 ```bash
 uv pip install -e ".[dev]"
@@ -704,7 +783,7 @@ O `core/` nunca importa de `cli/` ou `gui/`. Veja o [`CONTRIBUTING.md`](CONTRIBU
 
 ---
 
-## 10. Roadmap
+## 11. Roadmap
 
 - Diffing de respostas entre entradas do histórico (`diff`), corpos armazenados.
 - Timing detalhado (DNS/connect/TLS/TTFB) e visão da cadeia de redirects.

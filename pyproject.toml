@@ -55,6 +55,8 @@ dev = [
 ]
 socks = ["httpx[socks]"]
 clipboard = ["pyperclip"]
+mcp = ["mcp>=1.2"]
+http2 = ["h2>=4.0"]
 build-exe = ["pyinstaller>=6.0", "certifi"]
 build-pyz = ["shiv"]
 browser = ["playwright>=1.40"]
@@ -97,7 +99,7 @@ warn_unused_ignores = false
 disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*", "jsonpath_ng.*", "websockets.*", "cryptography.*"]
+module = ["httpx.*", "yaml", "playwright.*", "mitmproxy.*", "jsonpath_ng.*", "websockets.*", "cryptography.*", "mcp.*"]
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]

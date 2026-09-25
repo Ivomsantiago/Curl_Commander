@@ -275,6 +275,8 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     setup_p.add_argument("--proxy", action="store_true", help="Proxy interceptador (mitmproxy)")
     setup_p.add_argument("--socks", action="store_true", help="Suporte a proxy SOCKS")
     setup_p.add_argument("--clipboard", action="store_true", help="Área de transferência (pyperclip)")
+    setup_p.add_argument("--mcp", action="store_true", help="Servidor MCP nativo (conectar uma I.A.)")
+    setup_p.add_argument("--http2", action="store_true", help="Suporte a HTTP/2 (pacote h2)")
     setup_p.add_argument("--payloads", action="store_true", help="Baixar/atualizar as fontes de payloads")
     setup_p.add_argument("-y", "--yes", action="store_true", help="Não perguntar; assumir sim (uso em scripts/CI)")
 
@@ -415,13 +417,37 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
         metavar="REGRA",
         help="Match-and-replace: [req|resp:]padrão==>substituição (repetível)",
     )
-    prox.add_argument("--launch-browser", action="store_true", help="Abre o Chromium roteado pelo proxy")
+    prox.add_argument("--launch-browser", action="store_true", help="Abre um navegador roteado pelo proxy")
+    prox.add_argument(
+        "--browser-engine",
+        choices=["chromium", "firefox", "webkit"],
+        default="chromium",
+        help="Motor do navegador para --launch-browser (padrão: chromium)",
+    )
+    prox.add_argument(
+        "--browser-channel",
+        metavar="CANAL",
+        help="Usa um navegador instalado no sistema (chrome/msedge/firefox) em vez do embutido",
+    )
     prox.add_argument("--ca", action="store_true", help="Imprime o caminho da CA + guia de instalação/remoção e sai")
     prox.add_argument(
         "--config",
         metavar="ARQUIVO.TOML",
         help="Config de engajamento (--engagement/--scope padrão; flags explícitas sempre vencem)",
     )
+
+    # mcp (native MCP server: let any AI drive the tool over stdio)
+    mcp_p = subparsers.add_parser("mcp", help="Roda o servidor MCP nativo (conecta qualquer I.A. via stdio)")
+    mcp_p.add_argument("--scope", metavar="CAMINHO", help="Confina a I.A. aos hosts em escopo (arquivo)")
+    mcp_p.add_argument("--engagement", metavar="LABEL", help="Rótulo de engajamento (isola o histórico)")
+
+    # gui (graphical web interface — the real GUI, not the terminal TUI)
+    gui_p = subparsers.add_parser("gui", help="Abre a interface gráfica no navegador (servidor local)")
+    gui_p.add_argument("--port", type=int, default=8777, help="Porta do servidor local (padrão 8777)")
+    gui_p.add_argument("--host", default="127.0.0.1", help="Host de escuta (padrão 127.0.0.1)")
+    gui_p.add_argument("--scope", metavar="CAMINHO", help="Arquivo de escopo inicial")
+    gui_p.add_argument("--engagement", metavar="LABEL", help="Rótulo de engajamento (isola o histórico)")
+    gui_p.add_argument("--no-browser", action="store_true", help="Não abrir o navegador automaticamente")
 
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Valida uma vulnerabilidade (navegador/HTTP)")
@@ -536,5 +562,7 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "report",
         "recon",
         "engagement",
+        "mcp",
+        "gui",
     }
 )

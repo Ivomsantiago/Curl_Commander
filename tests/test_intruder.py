@@ -69,3 +69,27 @@ async def test_run_attack_rejects_unknown_mode_and_empty_wordlist():
         await run_attack(base, "nope", [["1"]])
     with pytest.raises(ValueError):
         await run_attack(base, "sniper", [[]])
+
+
+def test_gui_summarize_reports_distribution_and_anomalies():
+    from curlcommander.core.fuzzer import FuzzResult
+    from curlcommander.gui.intruder_panel import _summarize
+
+    results = [
+        FuzzResult(payloads=["a"], status_code=200, size_bytes=10, duration_ms=5.0, matched_regex=False),
+        FuzzResult(payloads=["b"], status_code=200, size_bytes=10, duration_ms=5.0, matched_regex=False),
+        FuzzResult(payloads=["c"], status_code=500, size_bytes=99, duration_ms=9.0, matched_regex=False, anomaly=True),
+        FuzzResult(payloads=["d"], status_code=None, size_bytes=0, duration_ms=1.0, matched_regex=False, error="boom"),
+    ]
+    out = _summarize(results)
+    assert "4" in out  # total
+    assert "1" in out  # one anomaly
+    assert "200×2" in out
+    assert "500×1" in out
+    assert "erro" in out
+
+
+def test_gui_summarize_empty():
+    from curlcommander.gui.intruder_panel import _summarize
+
+    assert "Nenhum" in _summarize([])

@@ -19,7 +19,79 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ## [Não lançado]
 
+### Adicionado
+
+* **Interface gráfica (`curlcmd gui`)** — uma GUI de verdade que abre no
+  navegador, não a TUI de terminal. Um servidor local (stdlib, **sem framework
+  novo**) serve uma SPA moderna (tema escuro) e uma API JSON apoiada na mesma
+  camada de lógica do MCP (`core/mcp_tools.py`). Painéis: Requisição/Repeater
+  (método, URL, headers, body, prévia de `curl`, importar `curl`), Resposta com
+  status/headers/corpo, Scan passivo, Histórico (clique para carregar no
+  Repeater), Proxy (tráfego capturado) e Escopo. Roda com
+  `curlcmd gui [--port 8777] [--engagement ENG] [--scope arquivo]`; abre o
+  navegador automaticamente (`--no-browser` desativa). O backend
+  (`core/webserver.py`) tem um roteador puro `handle_api()` testado sem socket.
+  Os assets `webui/` são localizados via `importlib.resources` (igual aos dados
+  de payloads), então a GUI funciona também no **binário standalone** — validado
+  construindo o executável Linux com PyInstaller e servindo a UI + API a partir
+  dele. Windows/Linux/macOS são montados pelo workflow de release a cada tag.
+
+* **Servidor MCP nativo (`curlcmd mcp`)** — conecta qualquer I.A. compatível com
+  o Model Context Protocol (Claude Desktop, Cursor, Continue, …) à ferramenta
+  via stdio. A I.A. passa a operar o CurlCommander por ferramentas expostas:
+  `send_request`, `build_curl`, `import_curl`, `passive_scan`,
+  `intruder_attack`, `set_scope`/`get_scope`, `list_payload_categories`,
+  `history_list`/`history_get`. Toda requisição é checada contra o **escopo da
+  sessão** (`--scope`, para confinar a I.A. aos alvos autorizados) e gravada no
+  mesmo histórico do CLI/TUI, sob o `--engagement` informado, para auditoria.
+  Ataques de Intruder têm teto de requisições por sessão. Instale com
+  `curlcmd setup --mcp` (extra `[mcp]`). A lógica das ferramentas vive em
+  `core/mcp_tools.py` (testável sem o SDK) e o wrapper FastMCP em
+  `core/mcp_server.py`, importado de forma preguiçosa — mesmo padrão do proxy.
+
+* **Integração com múltiplos navegadores.** A `BrowserSession` agora escolhe o
+  motor (`chromium` — padrão —, `firefox` ou `webkit`) e pode lançar um
+  navegador **instalado no sistema** via `channel` (chrome/msedge/firefox), sem
+  baixar o navegador embutido. O proxy interceptador expõe isso em
+  `curlcmd proxy --launch-browser --browser-engine firefox` e
+  `--browser-channel chrome`. Toda navegação continua checada contra o escopo.
+
+* **Resumo de análise do Intruder** — após um ataque, a barra mostra total de
+  requisições, número de anomalias, a distribuição de status codes
+  (`200×N 500×N …`) e a contagem de erros.
+
 ### Corrigido
+
+* **Endurecimento do MCP/segurança (revisão da PR #16).**
+  - O `curl` gravado no histórico das ferramentas MCP passou a ser gerado a
+    partir da config **redigida** — antes um `Authorization`/cookie/API-key
+    vazava para o banco de histórico e voltava pelo `history_get`.
+  - O teto de requisições do Intruder agora considera o **produto cartesiano**
+    no `cluster-bomb` (antes usava só a maior lista, deixando um ataque de
+    milhões de requisições passar pelo limite de 5.000).
+  - O escopo iniciado pelo operador (`curlcmd mcp --scope`) virou um **limite
+    de autorização não-ampliável**: a I.A. não pode mais limpar/ampliar via
+    `set_scope`.
+  - Sob escopo, o auto-redirect é desligado nas ferramentas MCP para **re-checar
+    o escopo a cada salto** (um 3xx para host fora do escopo não é mais seguido
+    às cegas).
+  - `passive_scan` e `intruder_attack` agora **gravam no histórico** (auditoria
+    completa das ações de rede disparadas pela I.A.).
+
+* **HTTP/2 quebrava em runtime.** A opção estava cabeada em toda parte (CLI
+  `--http2`, checkbox da TUI, `curl_builder`, `http_client`) mas o pacote `h2`
+  não era dependência nem extra, então usar `--http2` levantava o `ImportError`
+  cru do httpx. Agora há o extra `[http2]` (`curlcmd setup --http2`), uma entrada
+  no registry de recursos, e o cliente degrada com a mensagem padrão de recurso
+  ausente em vez de estourar um traceback.
+
+* **Match & Replace da aba Proxy (TUI) nunca era aplicado.** A chamada a
+  `run_proxy` passava as regras na posição de `scope_entries` (e uma lista vazia
+  na de `rules`), então nenhuma substituição acontecia — e o uso real teria
+  quebrado ao tentar tratar uma regra como host de escopo. A chamada foi
+  corrigida e o campo passou a aceitar a sintaxe oficial
+  `[req|resp:]padrão==>substituição` (além do `k=v` legado, agora aplicado aos
+  dois lados).
 
 * O instalador do Windows não encerra mais depois de uma instalação bem-sucedida
   via `uv` quando `uv tool update-shell` escreve a mensagem informativa

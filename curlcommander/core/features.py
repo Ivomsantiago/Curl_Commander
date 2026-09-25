@@ -61,6 +61,18 @@ FEATURES: dict[str, Feature] = {
         modules=["websockets"],
         packages=["websockets"],
     ),
+    "mcp": Feature(
+        name="mcp",
+        label="servidor MCP nativo (conectar uma I.A.)",
+        modules=["mcp"],
+        packages=["mcp"],
+    ),
+    "http2": Feature(
+        name="http2",
+        label="HTTP/2 (pacote h2)",
+        modules=["h2"],
+        packages=["httpx[http2]"],
+    ),
 }
 
 
