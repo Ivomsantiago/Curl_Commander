@@ -449,6 +449,12 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     gui_p.add_argument("--engagement", metavar="LABEL", help="Rótulo de engajamento (isola o histórico)")
     gui_p.add_argument("--no-browser", action="store_true", help="Não abrir o navegador automaticamente")
 
+    # plugins (list user extensions that add scanner checks)
+    plugins_p = subparsers.add_parser("plugins", help="Lista/gerencia plugins de usuário (extensões)")
+    plugins_sub = plugins_p.add_subparsers(dest="plugins_cmd", required=True)
+    plugins_sub.add_parser("list", help="Lista os plugins carregados e as checagens que adicionam")
+    plugins_sub.add_parser("dir", help="Imprime o diretório onde colocar os plugins")
+
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Valida uma vulnerabilidade (navegador/HTTP)")
     val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf", "ssrf", "idor"])
@@ -564,5 +570,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "engagement",
         "mcp",
         "gui",
+        "plugins",
     }
 )

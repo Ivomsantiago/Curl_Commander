@@ -3,7 +3,9 @@
         { "pattern": "^https://raw\\.githubusercontent\\.com/" },
         { "pattern": "^https://github\\.com/Ivomsantiago/Curl_Commander/releases" },
         { "pattern": "^https://github\\.com/Ivomsantiago/Curl_Commander/actions" },
-        { "pattern": "^https://img\\.shields\\.io/" }
+        { "pattern": "^https://img\\.shields\\.io/" },
+        { "pattern": "^http://" },
+        { "pattern": "^https://www\\.npmjs\\.com/" }
     ],
     "aliveStatusCodes": [200, 206, 429]
 }

@@ -81,6 +81,14 @@ def build_server(ctx: ToolContext | None = None) -> Any:
             return {"error": str(exc)}
 
     @server.tool()  # type: ignore[untyped-decorator]
+    async def active_scan(request: dict[str, Any]) -> dict[str, Any]:
+        """Actively scan a request's parameters (XSS/SQLi/SSTI/traversal/redirect)."""
+        try:
+            return await mcp_tools.active_scan(request, context)
+        except MCPToolError as exc:
+            return {"error": str(exc)}
+
+    @server.tool()  # type: ignore[untyped-decorator]
     async def intruder_attack(attack: dict[str, Any]) -> dict[str, Any]:
         """Run an Intruder attack (sniper|battering-ram|pitchfork|cluster-bomb).
 
@@ -107,6 +115,11 @@ def build_server(ctx: ToolContext | None = None) -> Any:
     def list_payload_categories() -> dict[str, Any]:
         """List the payload catalog categories available for Intruder."""
         return mcp_tools.list_payload_categories(context)
+
+    @server.tool()  # type: ignore[untyped-decorator]
+    def list_plugins() -> dict[str, Any]:
+        """List loaded user plugins and the checks they contribute."""
+        return mcp_tools.list_plugins(context)
 
     @server.tool()  # type: ignore[untyped-decorator]
     def history_list(limit: int = 50) -> dict[str, Any]:

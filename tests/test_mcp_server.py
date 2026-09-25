@@ -51,10 +51,12 @@ def test_build_server_registers_all_tools(monkeypatch):
         "build_curl",
         "import_curl",
         "passive_scan",
+        "active_scan",
         "intruder_attack",
         "set_scope",
         "get_scope",
         "list_payload_categories",
+        "list_plugins",
         "history_list",
         "history_get",
     }

@@ -156,6 +156,8 @@ def build_addon(
                 status_code=status,
                 duration_ms=0.0,
                 curl_cmd=f"# captured via proxy (engagement {engagement})",
+                origin="proxy",
+                engagement=engagement,
             )
             try:
                 repo.save(entry)

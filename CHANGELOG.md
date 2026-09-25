@@ -21,6 +21,33 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Interceptação ao vivo e lançamento de navegador dentro da GUI gráfica.**
+  A aba Proxy agora inicia/para um proxy interceptador em processo
+  (`core/webproxy.py`), liga/desliga a interceptação, e mostra cada requisição/
+  resposta retida num painel onde dá para **editar o corpo e Forward/Drop**
+  (ou "Forward tudo"). Um botão **"Abrir navegador pelo proxy"** lança
+  Chromium/Firefox/WebKit (ou um navegador do sistema via channel) já roteado.
+  Endpoints: `/api/proxy/{status,start,stop}`, `/api/intercept/{toggle,queue,
+  resolve,forward-all}`, `/api/browser/launch`. Degrada com mensagem clara
+  quando o extra `[proxy]` (mitmproxy) não está instalado. Navegação da GUI
+  passou a ter deep-link por hash (`#proxy`, `#history`, …).
+
+* **Sistema de plugins de usuário (`core/plugins.py`).** Solte um `.py` em
+  `<config>/plugins/` com uma função `register(registry)` que adiciona checagens
+  passivas e/ou ativas — elas rodam junto com as embutidas em `passive_scan` e
+  `active_scan` (GUI, MCP e API). Plugins são código local, isolado: um import
+  quebrado ou uma exceção viram erro reportado, nunca um crash. `curlcmd plugins
+  list` mostra o que carregou; `curlcmd plugins dir` mostra onde colocá-los; a
+  API expõe `GET /api/plugins` e o MCP a tool `list_plugins`.
+
+* **Scanner ativo por-parâmetro (`core/active.py`, reescrito).** Injeta payloads
+  em cada parâmetro (query e body form) **um de cada vez**, então um achado
+  aponta o parâmetro exato. Cobre XSS refletido (canário único), SQLi por erro,
+  SSTI (aritmética avaliada no servidor), path traversal e open redirect.
+  Exposto na **GUI** (botão "Scan ativo" na aba Requisição), no **MCP** (tool
+  `active_scan`) e na **API web** (`POST /api/active`). Sob escopo, cada
+  requisição forjada é checada e auditada no histórico (origem `mcp-active`).
+
 * **Interface gráfica (`curlcmd gui`)** — uma GUI de verdade que abre no
   navegador, não a TUI de terminal. Um servidor local (stdlib, **sem framework
   novo**) serve uma SPA moderna (tema escuro) e uma API JSON apoiada na mesma
