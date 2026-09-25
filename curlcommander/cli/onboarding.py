@@ -24,7 +24,7 @@ EXIT_OK = 0
 EXIT_USAGE = 1
 
 # The optional features a user can ask setup to install, in a stable order.
-_FEATURE_FLAGS = ("browser", "proxy", "socks", "clipboard")
+_FEATURE_FLAGS = ("browser", "proxy", "socks", "clipboard", "mcp")
 
 
 def _selected_features(args) -> list[str]:

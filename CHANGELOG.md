@@ -19,6 +19,21 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ## [Não lançado]
 
+### Adicionado
+
+* **Servidor MCP nativo (`curlcmd mcp`)** — conecta qualquer I.A. compatível com
+  o Model Context Protocol (Claude Desktop, Cursor, Continue, …) à ferramenta
+  via stdio. A I.A. passa a operar o CurlCommander por ferramentas expostas:
+  `send_request`, `build_curl`, `import_curl`, `passive_scan`,
+  `intruder_attack`, `set_scope`/`get_scope`, `list_payload_categories`,
+  `history_list`/`history_get`. Toda requisição é checada contra o **escopo da
+  sessão** (`--scope`, para confinar a I.A. aos alvos autorizados) e gravada no
+  mesmo histórico do CLI/TUI, sob o `--engagement` informado, para auditoria.
+  Ataques de Intruder têm teto de requisições por sessão. Instale com
+  `curlcmd setup --mcp` (extra `[mcp]`). A lógica das ferramentas vive em
+  `core/mcp_tools.py` (testável sem o SDK) e o wrapper FastMCP em
+  `core/mcp_server.py`, importado de forma preguiçosa — mesmo padrão do proxy.
+
 ### Corrigido
 
 * O instalador do Windows não encerra mais depois de uma instalação bem-sucedida

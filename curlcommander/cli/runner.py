@@ -131,6 +131,8 @@ def run_cli(args) -> int:
                 return _run_recon(args)
             case "engagement":
                 return _run_engagement(args)
+            case "mcp":
+                return _run_mcp(args, repo)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -1273,6 +1275,41 @@ def _run_proxy(args, repo) -> int:
         )
     except KeyboardInterrupt:
         _console.print("\n[dim]proxy stopped[/dim]")
+    return EXIT_OK
+
+
+def _run_mcp(args, repo) -> int:
+    """`curlcmd mcp` — native MCP server so any AI can drive the tool (stdio)."""
+    from curlcommander.core import mcp_server
+    from curlcommander.core.mcp_tools import MCPToolError, ToolContext
+
+    if not mcp_server.mcp_available():
+        from curlcommander.core import features
+
+        _console.print(f"[yellow]{features.missing_message('mcp')}[/yellow]")
+        return EXIT_USAGE
+
+    scope_entries = scope.load_scope(args.scope) if getattr(args, "scope", None) else []
+    ctx = ToolContext(
+        repo=repo,
+        engagement=getattr(args, "engagement", "") or "",
+        scope_entries=scope_entries,
+    )
+    # Banner goes to stderr: stdout is the MCP JSON-RPC channel and must stay clean.
+    import sys as _sys
+
+    print(
+        f"CurlCommander MCP server (stdio). engagement="
+        f"{ctx.engagement or '-'} scope={len(scope_entries)} host(s). Ctrl-C to stop.",
+        file=_sys.stderr,
+    )
+    try:
+        mcp_server.run_stdio(ctx)
+    except KeyboardInterrupt:
+        print("\nMCP server stopped", file=_sys.stderr)
+    except MCPToolError as exc:
+        _console.print(f"[red]Error:[/red] {exc}")
+        return EXIT_USAGE
     return EXIT_OK
 
 

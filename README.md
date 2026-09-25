@@ -90,8 +90,9 @@ gerenciado com um atalho `curlcmd` — resolve o seu PATH, é idempotente e acei
 6. [Armazenamento do histórico](#6-armazenamento-do-histórico)
 7. [Bug bounty — payloads → fuzz → discover](#7-bug-bounty--payloads--fuzz--discover)
 8. [Validação por navegador e proxy interceptador](#8-validação-por-navegador-e-proxy-interceptador)
-9. [Desenvolvimento](#9-desenvolvimento)
-10. [Roadmap](#10-roadmap)
+9. [MCP nativo — conectar uma I.A.](#9-mcp-nativo--conectar-uma-ia)
+10. [Desenvolvimento](#10-desenvolvimento)
+11. [Roadmap](#11-roadmap)
 
 Novo por aqui? Comece pelo guia rápido em [`docs/COMECE-AQUI.md`](docs/COMECE-AQUI.md).
 
@@ -693,7 +694,57 @@ curlcmd proxy --port 8080 --scope scope.txt --engagement ENG \
 
 ---
 
-## 9. Desenvolvimento
+## 9. MCP nativo — conectar uma I.A.
+
+O CurlCommander é também um **servidor MCP** (Model Context Protocol): qualquer
+I.A. compatível — Claude Desktop, Cursor, Continue, e outros clientes MCP —
+passa a operar a ferramenta diretamente, sem cola nem scripts. Instale o extra e
+rode o servidor por stdio:
+
+```bash
+curlcmd setup --mcp                 # instala o extra [mcp]
+curlcmd mcp --engagement ENG --scope escopo.txt
+```
+
+`--scope` **confina a I.A. aos hosts autorizados**: toda requisição é checada
+contra o escopo antes de sair (fora do escopo é recusada com mensagem clara), e
+tudo é gravado no mesmo histórico do CLI/TUI sob o `--engagement`, para
+auditoria posterior. Ataques de Intruder disparados pela I.A. têm teto de
+requisições por sessão.
+
+Ferramentas expostas à I.A.:
+
+| Ferramenta | O que faz |
+|-----------|-----------|
+| `send_request` | Envia uma requisição HTTP e devolve status/headers/corpo + o `curl` |
+| `build_curl` | Gera o `curl` fiel de uma requisição sem enviá-la |
+| `import_curl` | Converte um comando `curl` em config estruturada |
+| `passive_scan` | Envia e devolve achados passivos (headers, cookies, CORS, segredos, fingerprint) |
+| `intruder_attack` | Roda Intruder (sniper/battering-ram/pitchfork/cluster-bomb) com wordlists ou categorias do catálogo |
+| `set_scope` / `get_scope` | Lê/ajusta o escopo ao qual a I.A. está confinada |
+| `list_payload_categories` | Lista as categorias de payload disponíveis |
+| `history_list` / `history_get` | Consulta o histórico de requisições |
+
+Exemplo de configuração num cliente MCP (bloco `mcpServers`):
+
+```json
+{
+  "mcpServers": {
+    "curlcommander": {
+      "command": "curlcmd",
+      "args": ["mcp", "--engagement", "ENG", "--scope", "escopo.txt"]
+    }
+  }
+}
+```
+
+A lógica das ferramentas vive em `core/mcp_tools.py` (testável sem o SDK `mcp`) e
+o wrapper FastMCP em `core/mcp_server.py`, importado de forma preguiçosa — mesmo
+padrão do proxy interceptador.
+
+---
+
+## 10. Desenvolvimento
 
 ```bash
 uv pip install -e ".[dev]"
@@ -704,7 +755,7 @@ O `core/` nunca importa de `cli/` ou `gui/`. Veja o [`CONTRIBUTING.md`](CONTRIBU
 
 ---
 
-## 10. Roadmap
+## 11. Roadmap
 
 - Diffing de respostas entre entradas do histórico (`diff`), corpos armazenados.
 - Timing detalhado (DNS/connect/TLS/TTFB) e visão da cadeia de redirects.

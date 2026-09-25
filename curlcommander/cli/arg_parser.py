@@ -275,6 +275,7 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     setup_p.add_argument("--proxy", action="store_true", help="Proxy interceptador (mitmproxy)")
     setup_p.add_argument("--socks", action="store_true", help="Suporte a proxy SOCKS")
     setup_p.add_argument("--clipboard", action="store_true", help="Área de transferência (pyperclip)")
+    setup_p.add_argument("--mcp", action="store_true", help="Servidor MCP nativo (conectar uma I.A.)")
     setup_p.add_argument("--payloads", action="store_true", help="Baixar/atualizar as fontes de payloads")
     setup_p.add_argument("-y", "--yes", action="store_true", help="Não perguntar; assumir sim (uso em scripts/CI)")
 
@@ -423,6 +424,13 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
         help="Config de engajamento (--engagement/--scope padrão; flags explícitas sempre vencem)",
     )
 
+    # mcp (native MCP server: let any AI drive the tool over stdio)
+    mcp_p = subparsers.add_parser(
+        "mcp", help="Roda o servidor MCP nativo (conecta qualquer I.A. via stdio)"
+    )
+    mcp_p.add_argument("--scope", metavar="CAMINHO", help="Confina a I.A. aos hosts em escopo (arquivo)")
+    mcp_p.add_argument("--engagement", metavar="LABEL", help="Rótulo de engajamento (isola o histórico)")
+
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Valida uma vulnerabilidade (navegador/HTTP)")
     val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf", "ssrf", "idor"])
@@ -536,5 +544,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "report",
         "recon",
         "engagement",
+        "mcp",
     }
 )
