@@ -123,6 +123,26 @@ async def test_intruder_sniper_requires_originals():
         )
 
 
+async def test_active_scan_enforces_scope():
+    ctx = ToolContext(scope_entries=["allowed.example"])
+    with pytest.raises(MCPToolError):
+        await mcp_tools.active_scan({"url": "https://evil.example/?q=1"}, ctx)
+
+
+@respx.mock
+async def test_active_scan_finds_reflected_xss(tmp_path):
+    respx.get(url__regex=r"https://x/.*").mock(
+        side_effect=lambda r: httpx.Response(200, text=f"echo {r.url.params.get('q', '')}")
+    )
+    repo = HistoryRepo(tmp_path / "h.db")
+    ctx = ToolContext(repo=repo)
+    out = await mcp_tools.active_scan({"url": "https://x/s?q=1"}, ctx)
+    assert any(f["category"] == "active-xss" for f in out["findings"])
+    # Crafted requests are audited under the active-scan origin.
+    assert any(e["origin"] == "mcp-active" for e in mcp_tools.history_list(ctx)["entries"])
+    repo.close()
+
+
 def test_set_and_get_scope():
     ctx = ToolContext()
     mcp_tools.set_scope(["a.example", " b.example ", ""], ctx)

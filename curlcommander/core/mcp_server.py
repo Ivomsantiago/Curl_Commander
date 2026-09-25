@@ -81,6 +81,14 @@ def build_server(ctx: ToolContext | None = None) -> Any:
             return {"error": str(exc)}
 
     @server.tool()  # type: ignore[untyped-decorator]
+    async def active_scan(request: dict[str, Any]) -> dict[str, Any]:
+        """Actively scan a request's parameters (XSS/SQLi/SSTI/traversal/redirect)."""
+        try:
+            return await mcp_tools.active_scan(request, context)
+        except MCPToolError as exc:
+            return {"error": str(exc)}
+
+    @server.tool()  # type: ignore[untyped-decorator]
     async def intruder_attack(attack: dict[str, Any]) -> dict[str, Any]:
         """Run an Intruder attack (sniper|battering-ram|pitchfork|cluster-bomb).
 

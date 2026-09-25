@@ -135,6 +135,20 @@ async function scanCurrent() {
   toast(`${(data.findings || []).length} achado(s) passivo(s)`);
 }
 
+async function activeScanCurrent() {
+  const req = window._lastSendReq || currentRequest();
+  if (!req.url) { toast("Informe a URL primeiro", true); return; }
+  if (!req.url.includes("?") && !(req.body_type === "form" && req.body)) {
+    toast("Scan ativo precisa de parâmetros (query ?a=1 ou body form)", true);
+    return;
+  }
+  $("#resp-findings").innerHTML = '<div class="hint">Scan ativo em andamento…</div>';
+  const { data } = await api("POST", "/api/active", req);
+  if (data.error) { $("#resp-findings").innerHTML = ""; toast(data.error, true); return; }
+  renderFindings($("#resp-findings"), data.findings);
+  toast(`Scan ativo: ${(data.findings || []).length} achado(s)`);
+}
+
 async function importCurl() {
   const cmd = $("#body").value.trim();
   if (!cmd) { toast("Cole um comando curl no corpo", true); return; }
@@ -228,6 +242,7 @@ async function saveScope() {
 
 $("#send").addEventListener("click", sendRequest);
 $("#scan-this").addEventListener("click", scanCurrent);
+$("#active-this").addEventListener("click", activeScanCurrent);
 $("#import-curl").addEventListener("click", importCurl);
 $("#copy-curl").addEventListener("click", () => {
   navigator.clipboard?.writeText($("#curl-preview").textContent || "").then(() => toast("curl copiado"));

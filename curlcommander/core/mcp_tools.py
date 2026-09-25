@@ -216,6 +216,36 @@ async def passive_scan(params: dict[str, Any], ctx: ToolContext) -> dict[str, An
     }
 
 
+async def active_scan(params: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+    """Run the active scanner: inject payloads into each parameter and report.
+
+    Covers reflected XSS, error-based SQLi, SSTI, path traversal and open
+    redirect. Scope-enforced; a scoped session keeps redirects manual.
+    """
+    from curlcommander.core import active
+
+    config = config_from_params(params)
+    ctx.enforce(config.url)
+    if ctx.scope_entries:
+        config.follow_redirects = False
+
+    # Route the scanner's sends through the scope check + history, so every
+    # crafted request is confined and audited like a normal MCP send.
+    async def _sender(cfg: RequestConfig) -> ResponseResult:
+        ctx.enforce(cfg.url)
+        result = await send(cfg)
+        _record_send(ctx, cfg, result, origin="mcp-active")
+        return result
+
+    findings = await active.active_scan(config, sender=_sender)
+    return {
+        "url": config.url,
+        "findings": [
+            {"severity": f.severity, "category": f.category, "title": f.title, "detail": f.detail} for f in findings
+        ],
+    }
+
+
 def estimate_intruder_requests(mode: str, wordlists: list[list[str]], originals: list[str] | None) -> int:
     """Upper bound on the requests an attack will issue, per mode.
 

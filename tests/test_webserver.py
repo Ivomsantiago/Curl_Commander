@@ -43,6 +43,18 @@ def test_unknown_endpoint_404():
     assert status == 404 and "error" in body
 
 
+@respx.mock
+def test_active_scan_endpoint(tmp_path):
+    respx.get(url__regex=r"https://x/.*").mock(
+        side_effect=lambda r: httpx.Response(200, text=f"echo {r.url.params.get('q', '')}")
+    )
+    ctx = ToolContext(repo=HistoryRepo(tmp_path / "h.db"))
+    status, body = webserver.handle_api("POST", "/api/active", {"url": "https://x/s?q=1"}, ctx)
+    assert status == 200
+    assert any(f["category"] == "active-xss" for f in body["findings"])
+    ctx.repo.close()
+
+
 def test_send_out_of_scope_is_400():
     ctx = ToolContext(scope_entries=["allowed.example"])
     status, body = webserver.handle_api("POST", "/api/send", {"url": "https://evil.example/"}, ctx)

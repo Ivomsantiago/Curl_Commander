@@ -21,6 +21,14 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Scanner ativo por-parâmetro (`core/active.py`, reescrito).** Injeta payloads
+  em cada parâmetro (query e body form) **um de cada vez**, então um achado
+  aponta o parâmetro exato. Cobre XSS refletido (canário único), SQLi por erro,
+  SSTI (aritmética avaliada no servidor), path traversal e open redirect.
+  Exposto na **GUI** (botão "Scan ativo" na aba Requisição), no **MCP** (tool
+  `active_scan`) e na **API web** (`POST /api/active`). Sob escopo, cada
+  requisição forjada é checada e auditada no histórico (origem `mcp-active`).
+
 * **Interface gráfica (`curlcmd gui`)** — uma GUI de verdade que abre no
   navegador, não a TUI de terminal. Um servidor local (stdlib, **sem framework
   novo**) serve uma SPA moderna (tema escuro) e uma API JSON apoiada na mesma

@@ -748,6 +748,7 @@ Ferramentas expostas à I.A.:
 | `build_curl` | Gera o `curl` fiel de uma requisição sem enviá-la |
 | `import_curl` | Converte um comando `curl` em config estruturada |
 | `passive_scan` | Envia e devolve achados passivos (headers, cookies, CORS, segredos, fingerprint) |
+| `active_scan` | Scanner ativo por-parâmetro (XSS refletido, SQLi por erro, SSTI, path traversal, open redirect) |
 | `intruder_attack` | Roda Intruder (sniper/battering-ram/pitchfork/cluster-bomb) com wordlists ou categorias do catálogo |
 | `set_scope` / `get_scope` | Lê/ajusta o escopo ao qual a I.A. está confinada |
 | `list_payload_categories` | Lista as categorias de payload disponíveis |

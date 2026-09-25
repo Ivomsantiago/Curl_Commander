@@ -113,6 +113,8 @@ def handle_api(method: str, path: str, body: dict[str, Any], ctx: ToolContext) -
             return 200, mcp_tools.import_curl(str(body.get("command", "")), ctx)
         if method == "POST" and path == "/api/passive":
             return 200, _run(mcp_tools.passive_scan(body, ctx))
+        if method == "POST" and path == "/api/active":
+            return 200, _run(mcp_tools.active_scan(body, ctx))
         if method == "POST" and path == "/api/intruder":
             return 200, _run(mcp_tools.intruder_attack(body, ctx))
         return 404, {"error": f"no such endpoint: {method} {path}"}
