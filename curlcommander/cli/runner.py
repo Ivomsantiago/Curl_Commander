@@ -135,6 +135,8 @@ def run_cli(args) -> int:
                 return _run_mcp(args, repo)
             case "gui":
                 return _run_gui(args, repo)
+            case "plugins":
+                return _run_plugins(args)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -1316,6 +1318,29 @@ def _run_mcp(args, repo) -> int:
     except MCPToolError as exc:
         _console.print(f"[red]Error:[/red] {exc}")
         return EXIT_USAGE
+    return EXIT_OK
+
+
+def _run_plugins(args) -> int:
+    """`curlcmd plugins list|dir` — inspect user scanner extensions."""
+    from curlcommander.core import plugins as plugmod
+
+    if args.plugins_cmd == "dir":
+        _console.print(str(plugmod.plugins_dir()))
+        return EXIT_OK
+    registry = plugmod.load_plugins()
+    info = plugmod.summary(registry)
+    _console.print(f"[bold]Diretório:[/bold] {plugmod.plugins_dir()}")
+    if info["loaded"]:
+        _console.print(f"[green]Plugins carregados:[/green] {', '.join(info['loaded'])}")
+        if info["passive_checks"]:
+            _console.print(f"  passivos: {', '.join(info['passive_checks'])}")
+        if info["active_checks"]:
+            _console.print(f"  ativos: {', '.join(info['active_checks'])}")
+    else:
+        _console.print("[dim]Nenhum plugin carregado.[/dim]")
+    for err in info["errors"]:
+        _console.print(f"[red]erro:[/red] {err}")
     return EXIT_OK
 
 

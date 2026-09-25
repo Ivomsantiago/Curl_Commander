@@ -21,6 +21,14 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Sistema de plugins de usuário (`core/plugins.py`).** Solte um `.py` em
+  `<config>/plugins/` com uma função `register(registry)` que adiciona checagens
+  passivas e/ou ativas — elas rodam junto com as embutidas em `passive_scan` e
+  `active_scan` (GUI, MCP e API). Plugins são código local, isolado: um import
+  quebrado ou uma exceção viram erro reportado, nunca um crash. `curlcmd plugins
+  list` mostra o que carregou; `curlcmd plugins dir` mostra onde colocá-los; a
+  API expõe `GET /api/plugins` e o MCP a tool `list_plugins`.
+
 * **Scanner ativo por-parâmetro (`core/active.py`, reescrito).** Injeta payloads
   em cada parâmetro (query e body form) **um de cada vez**, então um achado
   aponta o parâmetro exato. Cobre XSS refletido (canário único), SQLi por erro,

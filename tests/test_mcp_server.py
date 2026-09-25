@@ -56,6 +56,7 @@ def test_build_server_registers_all_tools(monkeypatch):
         "set_scope",
         "get_scope",
         "list_payload_categories",
+        "list_plugins",
         "history_list",
         "history_get",
     }

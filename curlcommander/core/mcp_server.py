@@ -117,6 +117,11 @@ def build_server(ctx: ToolContext | None = None) -> Any:
         return mcp_tools.list_payload_categories(context)
 
     @server.tool()  # type: ignore[untyped-decorator]
+    def list_plugins() -> dict[str, Any]:
+        """List loaded user plugins and the checks they contribute."""
+        return mcp_tools.list_plugins(context)
+
+    @server.tool()  # type: ignore[untyped-decorator]
     def history_list(limit: int = 50) -> dict[str, Any]:
         """List recent requests recorded in the shared history store."""
         return mcp_tools.history_list(context, limit=limit)

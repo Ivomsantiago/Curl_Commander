@@ -105,6 +105,8 @@ def handle_api(method: str, path: str, body: dict[str, Any], ctx: ToolContext) -
             return 200, mcp_tools.history_get(int(path.rsplit("/", 1)[1]), ctx)
         if method == "GET" and path == "/api/payload-categories":
             return 200, mcp_tools.list_payload_categories(ctx)
+        if method == "GET" and path == "/api/plugins":
+            return 200, mcp_tools.list_plugins(ctx)
         if method == "POST" and path == "/api/send":
             return 200, _run(mcp_tools.send_request(body, ctx))
         if method == "POST" and path == "/api/curl":

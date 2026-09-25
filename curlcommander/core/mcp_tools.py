@@ -47,6 +47,16 @@ class ToolContext:
     scope_locked: bool = False
     # Safety cap so an AI cannot launch an unbounded Intruder run by accident.
     max_intruder_requests: int = 5000
+    # User plugins, loaded once on first use (None = not yet loaded).
+    _plugins: Any = None
+
+    def plugins(self) -> Any:
+        """The loaded plugin registry (cached per session)."""
+        if self._plugins is None:
+            from curlcommander.core import plugins as plugmod
+
+            self._plugins = plugmod.load_plugins()
+        return self._plugins
 
     def enforce(self, url: str) -> None:
         if self.scope_entries:
@@ -207,6 +217,9 @@ async def passive_scan(params: dict[str, Any], ctx: ToolContext) -> dict[str, An
     result = await send(config)
     _record_send(ctx, config, result, origin="mcp-scan")
     findings = passive.analyze(result, config.url)
+    from curlcommander.core import plugins as plugmod
+
+    findings += plugmod.run_passive_plugins(ctx.plugins(), result, config.url)
     return {
         "url": config.url,
         "status_code": result.status_code,
@@ -238,6 +251,9 @@ async def active_scan(params: dict[str, Any], ctx: ToolContext) -> dict[str, Any
         return result
 
     findings = await active.active_scan(config, sender=_sender)
+    from curlcommander.core import plugins as plugmod
+
+    findings += await plugmod.run_active_plugins(ctx.plugins(), config, _sender)
     return {
         "url": config.url,
         "findings": [
@@ -390,6 +406,12 @@ def list_payload_categories(ctx: ToolContext) -> dict[str, Any]:
     from curlcommander.core import payload_catalog
 
     return {"categories": payload_catalog.categories()}
+
+
+def list_plugins(ctx: ToolContext) -> dict[str, Any]:
+    from curlcommander.core import plugins as plugmod
+
+    return plugmod.summary(ctx.plugins())
 
 
 def history_list(ctx: ToolContext, limit: int = 50) -> dict[str, Any]:

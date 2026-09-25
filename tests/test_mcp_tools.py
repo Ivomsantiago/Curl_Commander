@@ -123,6 +123,20 @@ async def test_intruder_sniper_requires_originals():
         )
 
 
+@respx.mock
+async def test_passive_scan_includes_plugin_findings():
+    respx.get("https://x/").mock(return_value=httpx.Response(200, text="ok"))
+    from curlcommander.core import plugins as plugmod
+    from curlcommander.core.passive import Finding
+
+    reg = plugmod.Registry()
+    reg.add_passive("demo", lambda result, url: [Finding("low", "plugin-demo", "Demo", url)])
+    ctx = ToolContext()
+    ctx._plugins = reg  # inject instead of loading from disk
+    out = await mcp_tools.passive_scan({"url": "https://x/"}, ctx)
+    assert any(f["category"] == "plugin-demo" for f in out["findings"])
+
+
 async def test_active_scan_enforces_scope():
     ctx = ToolContext(scope_entries=["allowed.example"])
     with pytest.raises(MCPToolError):
