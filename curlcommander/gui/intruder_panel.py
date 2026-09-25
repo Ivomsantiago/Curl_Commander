@@ -68,6 +68,28 @@ def parse_wordlists(text: str, n_positions: int, mode: str) -> list[list[str]]:
     raise ValueError(f"{len(groups)} listas de payload para {n_positions} posições")
 
 
+def _summarize(results: list[FuzzResult]) -> str:
+    """One-line analysis of an attack: total, anomalies, and status distribution.
+
+    Pure and side-effect-free so it can be unit-tested without the TUI.
+    """
+    if not results:
+        return "[dim]Nenhum resultado.[/dim]"
+    from collections import Counter
+
+    total = len(results)
+    anomalies = sum(1 for r in results if r.anomaly)
+    errors = sum(1 for r in results if r.status_code is None)
+    codes = Counter(r.status_code for r in results if r.status_code is not None)
+    dist = " ".join(f"{code}×{n}" for code, n in sorted(codes.items()))
+    parts = [f"[b]{total}[/b] requisições", f"[yellow]{anomalies}[/yellow] anomalia(s)"]
+    if dist:
+        parts.append(f"status: {dist}")
+    if errors:
+        parts.append(f"[red]{errors}[/red] erro(s)")
+    return " · ".join(parts)
+
+
 class IntruderPanel(Widget):
     DEFAULT_CSS = """
     IntruderPanel { height: 1fr; layout: horizontal; }
@@ -197,10 +219,7 @@ class IntruderPanel(Widget):
         except Exception as exc:  # noqa: BLE001
             self.query_one("#it-summary", Static).update(f"[red]Falha no ataque:[/red] {exc}")
             return
-        anomalies = sum(1 for r in self._results if r.anomaly)
-        self.query_one("#it-summary", Static).update(
-            f"[b]{len(self._results)}[/b] requisições · [yellow]{anomalies}[/yellow] anomalia(s)"
-        )
+        self.query_one("#it-summary", Static).update(_summarize(self._results))
         self._render_results()
 
     def _render_results(self) -> None:

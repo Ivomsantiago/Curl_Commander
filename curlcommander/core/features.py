@@ -67,6 +67,12 @@ FEATURES: dict[str, Feature] = {
         modules=["mcp"],
         packages=["mcp"],
     ),
+    "http2": Feature(
+        name="http2",
+        label="HTTP/2 (pacote h2)",
+        modules=["h2"],
+        packages=["httpx[http2]"],
+    ),
 }
 
 

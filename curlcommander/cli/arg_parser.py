@@ -276,6 +276,7 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     setup_p.add_argument("--socks", action="store_true", help="Suporte a proxy SOCKS")
     setup_p.add_argument("--clipboard", action="store_true", help="Área de transferência (pyperclip)")
     setup_p.add_argument("--mcp", action="store_true", help="Servidor MCP nativo (conectar uma I.A.)")
+    setup_p.add_argument("--http2", action="store_true", help="Suporte a HTTP/2 (pacote h2)")
     setup_p.add_argument("--payloads", action="store_true", help="Baixar/atualizar as fontes de payloads")
     setup_p.add_argument("-y", "--yes", action="store_true", help="Não perguntar; assumir sim (uso em scripts/CI)")
 

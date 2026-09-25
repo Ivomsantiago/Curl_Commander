@@ -104,3 +104,15 @@ async def test_query_params_in_request():
     sent_url = str(route.calls.last.request.url)
     assert "q=python" in sent_url
     assert "page=2" in sent_url
+
+
+async def test_http2_without_h2_returns_clean_error(monkeypatch):
+    # When h2 is absent, http2=True must degrade to a clear feature message,
+    # not the raw ImportError httpx raises at client construction.
+    from curlcommander.core import features
+
+    monkeypatch.setattr(features, "available", lambda name: False if name == "http2" else True)
+    result = await send(RequestConfig(method="GET", url="https://example.com/", http2=True))
+    assert result.status_code is None
+    assert result.error is not None
+    assert "http2" in result.error.lower() or "h2" in result.error.lower()

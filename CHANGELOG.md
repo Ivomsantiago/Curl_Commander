@@ -41,7 +41,18 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
   `curlcmd proxy --launch-browser --browser-engine firefox` e
   `--browser-channel chrome`. Toda navegação continua checada contra o escopo.
 
+* **Resumo de análise do Intruder** — após um ataque, a barra mostra total de
+  requisições, número de anomalias, a distribuição de status codes
+  (`200×N 500×N …`) e a contagem de erros.
+
 ### Corrigido
+
+* **HTTP/2 quebrava em runtime.** A opção estava cabeada em toda parte (CLI
+  `--http2`, checkbox da TUI, `curl_builder`, `http_client`) mas o pacote `h2`
+  não era dependência nem extra, então usar `--http2` levantava o `ImportError`
+  cru do httpx. Agora há o extra `[http2]` (`curlcmd setup --http2`), uma entrada
+  no registry de recursos, e o cliente degrada com a mensagem padrão de recurso
+  ausente em vez de estourar um traceback.
 
 * **Match & Replace da aba Proxy (TUI) nunca era aplicado.** A chamada a
   `run_proxy` passava as regras na posição de `scope_entries` (e uma lista vazia
