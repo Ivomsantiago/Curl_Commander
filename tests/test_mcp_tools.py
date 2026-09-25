@@ -130,6 +130,76 @@ def test_set_and_get_scope():
     assert mcp_tools.get_scope(ctx)["scope"] == ["a.example", "b.example"]
 
 
+def test_locked_scope_cannot_be_changed_by_caller():
+    # An operator-locked scope is a non-widenable boundary for the MCP caller.
+    ctx = ToolContext(scope_entries=["only.example"], scope_locked=True)
+    with pytest.raises(MCPToolError, match="locked"):
+        mcp_tools.set_scope([], ctx)
+    with pytest.raises(MCPToolError, match="locked"):
+        mcp_tools.set_scope(["evil.example"], ctx)
+    assert ctx.scope_entries == ["only.example"]
+
+
+def test_prepare_disables_redirects_under_scope():
+    ctx = ToolContext(scope_entries=["allowed.example"])
+    cfg = mcp_tools.config_from_params({"url": "https://allowed.example/"})
+    assert cfg.follow_redirects is True
+    ctx.prepare(cfg)
+    # Auto-redirect off so a 3xx to an out-of-scope host isn't chased blindly.
+    assert cfg.follow_redirects is False
+
+
+def test_prepare_leaves_redirects_when_no_scope():
+    ctx = ToolContext()
+    cfg = mcp_tools.config_from_params({"url": "https://x/"})
+    ctx.prepare(cfg)
+    assert cfg.follow_redirects is True
+
+
+def test_estimate_cluster_bomb_uses_cartesian_product():
+    est = mcp_tools.estimate_intruder_requests
+    # Three 100-item lists → 1,000,000, not 100.
+    assert est("cluster-bomb", [["x"] * 100, ["y"] * 100, ["z"] * 100], None) == 1_000_000
+    assert est("battering-ram", [["x"] * 100], None) == 100
+    assert est("sniper", [["x"] * 10], ["a", "b", "c"]) == 30
+
+
+async def test_cluster_bomb_cap_enforced_on_product():
+    ctx = ToolContext(max_intruder_requests=5000)
+    with pytest.raises(MCPToolError, match="cap"):
+        await mcp_tools.intruder_attack(
+            {
+                "base": {"url": "https://x/?a=FUZZ1&b=FUZZ2", "method": "GET"},
+                "mode": "cluster-bomb",
+                "wordlists": [["p"] * 100, ["q"] * 100],  # 10,000 > 5,000
+            },
+            ctx,
+        )
+
+
+@respx.mock
+async def test_stored_curl_is_redacted(tmp_path):
+    respx.get("https://x/").mock(return_value=httpx.Response(200, text="ok"))
+    repo = HistoryRepo(tmp_path / "h.db")
+    ctx = ToolContext(repo=repo)
+    await mcp_tools.send_request({"url": "https://x/", "headers": {"Authorization": "Bearer SUPERSECRET"}}, ctx)
+    listed = mcp_tools.history_list(ctx, limit=1)
+    got = mcp_tools.history_get(listed["entries"][0]["id"], ctx)
+    assert "SUPERSECRET" not in got["curl"]
+    repo.close()
+
+
+@respx.mock
+async def test_passive_scan_is_recorded(tmp_path):
+    respx.get("https://x/").mock(return_value=httpx.Response(200, text="ok"))
+    repo = HistoryRepo(tmp_path / "h.db")
+    ctx = ToolContext(repo=repo)
+    await mcp_tools.passive_scan({"url": "https://x/"}, ctx)
+    assert repo.count() == 1
+    assert mcp_tools.history_list(ctx, limit=1)["entries"][0]["origin"] == "mcp-scan"
+    repo.close()
+
+
 @respx.mock
 async def test_history_list_and_get(tmp_path):
     respx.get("https://x/").mock(return_value=httpx.Response(200, text="ok"))

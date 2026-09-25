@@ -41,6 +41,10 @@ class ToolContext:
     repo: HistoryRepo | None = None
     engagement: str = ""
     scope_entries: list[str] = field(default_factory=list)
+    # When the operator started the session with a scope (e.g. `curlcmd mcp
+    # --scope`), that scope is an authorization boundary the untrusted MCP
+    # caller must not be able to widen or clear: set_scope is refused.
+    scope_locked: bool = False
     # Safety cap so an AI cannot launch an unbounded Intruder run by accident.
     max_intruder_requests: int = 5000
 
@@ -50,6 +54,47 @@ class ToolContext:
                 scope.enforce(url, self.scope_entries)
             except scope.ScopeError as exc:
                 raise MCPToolError(str(exc)) from exc
+
+    def prepare(self, config: RequestConfig) -> None:
+        """Enforce scope on the target and keep the boundary across redirects.
+
+        With ``follow_redirects=True`` httpx would chase a 3xx to any host
+        without a second scope check, letting an in-scope endpoint bounce the
+        request out of scope (common when probing open redirects). While a
+        scope is set, auto-redirect is disabled so each hop must be re-issued
+        (and re-checked) explicitly.
+        """
+        self.enforce(config.url)
+        if self.scope_entries:
+            config.follow_redirects = False
+
+
+def _record_send(ctx: ToolContext, config: RequestConfig, result: ResponseResult, origin: str = "mcp") -> int | None:
+    """Persist an MCP-issued request/response to history, redaction-safe.
+
+    Both the stored request *and* its curl are built from the redacted config,
+    so a credential (Authorization/cookie/API key) never lands in the history
+    database or comes back out through ``history_get``.
+    """
+    if ctx.repo is None:
+        return None
+    try:
+        redacted = redact_config(config, {})
+        entry = HistoryEntry(
+            id=0,
+            timestamp=datetime.now().isoformat(timespec="seconds"),
+            request=redacted,
+            status_code=result.status_code,
+            duration_ms=result.duration_ms,
+            curl_cmd=build_curl(redacted),
+            response_body=result.content,
+            response_content_type=result.content_type,
+            origin=origin,
+            engagement=ctx.engagement,
+        )
+        return ctx.repo.save(entry)
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -121,28 +166,10 @@ async def send_request(params: dict[str, Any], ctx: ToolContext) -> dict[str, An
     Respects the session scope allowlist and records the exchange in history.
     """
     config = config_from_params(params)
-    ctx.enforce(config.url)
+    ctx.prepare(config)
     curl = build_curl(config)
     result = await send(config)
-    if ctx.repo is not None:
-        try:
-            entry = HistoryEntry(
-                id=0,
-                timestamp=datetime.now().isoformat(timespec="seconds"),
-                request=redact_config(config, {}),
-                status_code=result.status_code,
-                duration_ms=result.duration_ms,
-                curl_cmd=curl,
-                response_body=result.content,
-                response_content_type=result.content_type,
-                origin="mcp",
-                engagement=ctx.engagement,
-            )
-            entry_id = ctx.repo.save(entry)
-        except Exception:
-            entry_id = None
-    else:
-        entry_id = None
+    entry_id = _record_send(ctx, config, result)
     return {
         "request": {"method": config.method, "url": config.url},
         "curl": curl,
@@ -176,8 +203,9 @@ async def passive_scan(params: dict[str, Any], ctx: ToolContext) -> dict[str, An
     verbose errors, leaked secrets, fingerprints).
     """
     config = config_from_params(params)
-    ctx.enforce(config.url)
+    ctx.prepare(config)
     result = await send(config)
+    _record_send(ctx, config, result, origin="mcp-scan")
     findings = passive.analyze(result, config.url)
     return {
         "url": config.url,
@@ -186,6 +214,29 @@ async def passive_scan(params: dict[str, Any], ctx: ToolContext) -> dict[str, An
             {"severity": f.severity, "category": f.category, "title": f.title, "detail": f.detail} for f in findings
         ],
     }
+
+
+def estimate_intruder_requests(mode: str, wordlists: list[list[str]], originals: list[str] | None) -> int:
+    """Upper bound on the requests an attack will issue, per mode.
+
+    Critically, ``cluster-bomb`` fires the **Cartesian product** of every
+    wordlist, so the estimate must multiply the lengths — using only the
+    largest list (three 100-item lists reading as 100 instead of 1,000,000)
+    would let the cap be blown past by orders of magnitude.
+    """
+    import math
+
+    lengths = [len(wl) for wl in wordlists]
+    if not lengths:
+        return 0
+    if mode == "cluster-bomb":
+        return math.prod(lengths)
+    if mode == "sniper":
+        # One wordlist, replayed once per marked position.
+        return lengths[0] * max(1, len(originals or []))
+    # battering-ram: one list fills every position at once; pitchfork: lists
+    # advance in lockstep (min length) — max is a safe over-estimate for both.
+    return max(lengths)
 
 
 async def intruder_attack(params: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
@@ -199,7 +250,7 @@ async def intruder_attack(params: dict[str, Any], ctx: ToolContext) -> dict[str,
     from curlcommander.core import intruder, payload_catalog
 
     base = config_from_params(params.get("base") or params)
-    ctx.enforce(base.url)
+    ctx.prepare(base)
     mode = params.get("mode", "sniper")
     if mode not in intruder.ATTACK_MODES:
         raise MCPToolError(f"unknown mode {mode!r} (known: {', '.join(intruder.ATTACK_MODES)})")
@@ -219,7 +270,7 @@ async def intruder_attack(params: dict[str, Any], ctx: ToolContext) -> dict[str,
             "(one per FUZZ1/FUZZ2/... marker). Use battering-ram for a single FUZZ marker."
         )
 
-    total = sum(len(wl) for wl in wordlists) if mode == "sniper" else max(len(wl) for wl in wordlists)
+    total = estimate_intruder_requests(mode, wordlists, originals)
     if total > ctx.max_intruder_requests:
         raise MCPToolError(f"attack would issue ~{total} requests, over the {ctx.max_intruder_requests} cap")
 
@@ -245,6 +296,26 @@ async def intruder_attack(params: dict[str, Any], ctx: ToolContext) -> dict[str,
         concurrency=int(params.get("concurrency", 10)),
         rate=float(params.get("rate", 0.0)),
     )
+    # Audit trail: record that an AI-driven attack ran (mode, size, anomalies)
+    # against the base target, so the engagement history reflects the action.
+    if ctx.repo is not None:
+        try:
+            anomalies = sum(1 for r in results if r.anomaly)
+            redacted = redact_config(base, {})
+            ctx.repo.save(
+                HistoryEntry(
+                    id=0,
+                    timestamp=datetime.now().isoformat(timespec="seconds"),
+                    request=redacted,
+                    status_code=None,
+                    duration_ms=0.0,
+                    curl_cmd=f"# intruder {mode}: {len(results)} request(s), {anomalies} anomaly(ies)",
+                    origin="mcp-intruder",
+                    engagement=ctx.engagement,
+                )
+            )
+        except Exception:
+            pass
     return {
         "mode": mode,
         "count": len(results),
@@ -267,7 +338,16 @@ async def intruder_attack(params: dict[str, Any], ctx: ToolContext) -> dict[str,
 
 
 def set_scope(entries: list[str], ctx: ToolContext) -> dict[str, Any]:
-    """Replace the session scope allowlist (host globs / CIDRs, ``!`` to deny)."""
+    """Replace the session scope allowlist (host globs / CIDRs, ``!`` to deny).
+
+    Refused when the operator locked the scope at startup (``curlcmd mcp
+    --scope``): an untrusted MCP caller must not be able to widen or clear the
+    authorization boundary it is confined to.
+    """
+    if ctx.scope_locked:
+        raise MCPToolError(
+            "scope is locked by the operator (started with --scope) and cannot be changed from this session"
+        )
     ctx.scope_entries = [str(e).strip() for e in entries if str(e).strip()]
     return {"scope": ctx.scope_entries}
 

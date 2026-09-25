@@ -62,6 +62,22 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Corrigido
 
+* **Endurecimento do MCP/segurança (revisão da PR #16).**
+  - O `curl` gravado no histórico das ferramentas MCP passou a ser gerado a
+    partir da config **redigida** — antes um `Authorization`/cookie/API-key
+    vazava para o banco de histórico e voltava pelo `history_get`.
+  - O teto de requisições do Intruder agora considera o **produto cartesiano**
+    no `cluster-bomb` (antes usava só a maior lista, deixando um ataque de
+    milhões de requisições passar pelo limite de 5.000).
+  - O escopo iniciado pelo operador (`curlcmd mcp --scope`) virou um **limite
+    de autorização não-ampliável**: a I.A. não pode mais limpar/ampliar via
+    `set_scope`.
+  - Sob escopo, o auto-redirect é desligado nas ferramentas MCP para **re-checar
+    o escopo a cada salto** (um 3xx para host fora do escopo não é mais seguido
+    às cegas).
+  - `passive_scan` e `intruder_attack` agora **gravam no histórico** (auditoria
+    completa das ações de rede disparadas pela I.A.).
+
 * **HTTP/2 quebrava em runtime.** A opção estava cabeada em toda parte (CLI
   `--http2`, checkbox da TUI, `curl_builder`, `http_client`) mas o pacote `h2`
   não era dependência nem extra, então usar `--http2` levantava o `ImportError`

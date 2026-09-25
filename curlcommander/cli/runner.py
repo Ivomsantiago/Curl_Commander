@@ -1298,6 +1298,8 @@ def _run_mcp(args, repo) -> int:
         repo=repo,
         engagement=getattr(args, "engagement", "") or "",
         scope_entries=scope_entries,
+        # An operator-provided scope is an authorization boundary the AI can't lift.
+        scope_locked=bool(scope_entries),
     )
     # Banner goes to stderr: stdout is the MCP JSON-RPC channel and must stay clean.
     import sys as _sys
