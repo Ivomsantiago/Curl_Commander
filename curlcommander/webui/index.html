@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CurlCommander</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <span class="brand-mark">⌘</span>
+        <div>
+          <div class="brand-name">CurlCommander</div>
+          <div class="brand-sub" id="brand-version">GUI</div>
+        </div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="request">Requisição / Repeater</button>
+        <button class="nav-item" data-view="history">Histórico</button>
+        <button class="nav-item" data-view="proxy">Proxy</button>
+        <button class="nav-item" data-view="scan">Scan passivo</button>
+        <button class="nav-item" data-view="scope">Escopo</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div id="engagement-tag" class="tag"></div>
+      </div>
+    </aside>
+
+    <main id="main">
+      <!-- REQUEST / REPEATER -->
+      <section class="view active" data-view="request">
+        <div class="req-bar">
+          <select id="method">
+            <option>GET</option><option>POST</option><option>PUT</option>
+            <option>PATCH</option><option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+          </select>
+          <input id="url" type="text" placeholder="https://alvo.exemplo/caminho?param=valor" />
+          <button id="send" class="primary">Enviar</button>
+          <button id="scan-this" title="Scan passivo desta resposta">Scan</button>
+        </div>
+        <div class="split">
+          <div class="pane">
+            <div class="pane-head">
+              <span>Requisição</span>
+              <div class="pane-tabs">
+                <button class="ptab active" data-ptab="headers">Headers</button>
+                <button class="ptab" data-ptab="body">Body</button>
+                <button class="ptab" data-ptab="curl">curl</button>
+              </div>
+            </div>
+            <div class="ptab-panel active" data-ptab="headers">
+              <textarea id="headers" spellcheck="false" placeholder="Um por linha:&#10;Content-Type: application/json&#10;Authorization: Bearer TOKEN"></textarea>
+            </div>
+            <div class="ptab-panel" data-ptab="body">
+              <div class="row">
+                <label>Tipo:</label>
+                <select id="body-type">
+                  <option value="none">none</option>
+                  <option value="json">json</option>
+                  <option value="form">form</option>
+                  <option value="raw">raw</option>
+                </select>
+                <span class="hint">Cole um <code>curl</code> no corpo e clique "Importar curl"</span>
+                <button id="import-curl" class="ghost">Importar curl</button>
+              </div>
+              <textarea id="body" spellcheck="false" placeholder='{"exemplo": true}'></textarea>
+            </div>
+            <div class="ptab-panel" data-ptab="curl">
+              <pre id="curl-preview" class="mono">—</pre>
+              <button id="copy-curl" class="ghost">Copiar</button>
+            </div>
+          </div>
+
+          <div class="pane">
+            <div class="pane-head">
+              <span>Resposta</span>
+              <span id="resp-meta" class="meta"></span>
+            </div>
+            <div class="resp-body">
+              <div id="resp-findings" class="findings"></div>
+              <pre id="resp-headers" class="mono muted"></pre>
+              <pre id="resp-content" class="mono"></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section class="view" data-view="history">
+        <div class="view-head">
+          <h2>Histórico</h2>
+          <button id="history-refresh" class="ghost">Atualizar</button>
+        </div>
+        <table class="grid" id="history-table">
+          <thead><tr><th>#</th><th>Método</th><th>URL</th><th>Status</th><th>ms</th><th>Origem</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <!-- PROXY -->
+      <section class="view" data-view="proxy">
+        <div class="view-head"><h2>Proxy interceptador</h2><button id="proxy-refresh" class="ghost">Atualizar</button></div>
+        <p class="hint">
+          Inicie o proxy pela CLI: <code class="mono">curlcmd proxy --engagement ENG --launch-browser --browser-engine firefox</code>.
+          O tráfego capturado (origem <code>proxy</code>) aparece abaixo — clique numa linha para mandar pro Repeater.
+        </p>
+        <table class="grid" id="proxy-table">
+          <thead><tr><th>#</th><th>Método</th><th>URL</th><th>Status</th><th>Origem</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <!-- SCAN -->
+      <section class="view" data-view="scan">
+        <div class="view-head"><h2>Scan passivo</h2></div>
+        <div class="req-bar">
+          <input id="scan-url" type="text" placeholder="https://alvo.exemplo/" />
+          <button id="scan-run" class="primary">Analisar</button>
+        </div>
+        <div id="scan-findings" class="findings big"></div>
+      </section>
+
+      <!-- SCOPE -->
+      <section class="view" data-view="scope">
+        <div class="view-head"><h2>Escopo</h2></div>
+        <p class="hint">Um host/glob/CIDR por linha. Prefixe com <code>!</code> para excluir. Vazio = sem restrição. Aplica à GUI e às ferramentas da IA (MCP).</p>
+        <textarea id="scope-text" spellcheck="false" placeholder="*.alvo.exemplo&#10;api.alvo.exemplo&#10;!admin.alvo.exemplo"></textarea>
+        <button id="scope-save" class="primary">Salvar escopo</button>
+        <span id="scope-status" class="meta"></span>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

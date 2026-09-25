@@ -21,6 +21,17 @@ Este projeto **não** segue o SemVer padrão. Dada uma versão `X.Y.Z`:
 
 ### Adicionado
 
+* **Interface gráfica (`curlcmd gui`)** — uma GUI de verdade que abre no
+  navegador, não a TUI de terminal. Um servidor local (stdlib, **sem framework
+  novo**) serve uma SPA moderna (tema escuro) e uma API JSON apoiada na mesma
+  camada de lógica do MCP (`core/mcp_tools.py`). Painéis: Requisição/Repeater
+  (método, URL, headers, body, prévia de `curl`, importar `curl`), Resposta com
+  status/headers/corpo, Scan passivo, Histórico (clique para carregar no
+  Repeater), Proxy (tráfego capturado) e Escopo. Roda com
+  `curlcmd gui [--port 8777] [--engagement ENG] [--scope arquivo]`; abre o
+  navegador automaticamente (`--no-browser` desativa). O backend
+  (`core/webserver.py`) tem um roteador puro `handle_api()` testado sem socket.
+
 * **Servidor MCP nativo (`curlcmd mcp`)** — conecta qualquer I.A. compatível com
   o Model Context Protocol (Claude Desktop, Cursor, Continue, …) à ferramenta
   via stdio. A I.A. passa a operar o CurlCommander por ferramentas expostas:

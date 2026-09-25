@@ -441,6 +441,14 @@ def build_subcommand_parser() -> argparse.ArgumentParser:
     mcp_p.add_argument("--scope", metavar="CAMINHO", help="Confina a I.A. aos hosts em escopo (arquivo)")
     mcp_p.add_argument("--engagement", metavar="LABEL", help="Rótulo de engajamento (isola o histórico)")
 
+    # gui (graphical web interface — the real GUI, not the terminal TUI)
+    gui_p = subparsers.add_parser("gui", help="Abre a interface gráfica no navegador (servidor local)")
+    gui_p.add_argument("--port", type=int, default=8777, help="Porta do servidor local (padrão 8777)")
+    gui_p.add_argument("--host", default="127.0.0.1", help="Host de escuta (padrão 127.0.0.1)")
+    gui_p.add_argument("--scope", metavar="CAMINHO", help="Arquivo de escopo inicial")
+    gui_p.add_argument("--engagement", metavar="LABEL", help="Rótulo de engajamento (isola o histórico)")
+    gui_p.add_argument("--no-browser", action="store_true", help="Não abrir o navegador automaticamente")
+
     # validate (browser-executed / HTTP vulnerability validators)
     val = subparsers.add_parser("validate", help="Valida uma vulnerabilidade (navegador/HTTP)")
     val.add_argument("kind", choices=["xss", "cors", "open-redirect", "clickjacking", "csrf", "ssrf", "idor"])
@@ -555,5 +563,6 @@ SUBCOMMANDS: frozenset[str] = frozenset(
         "recon",
         "engagement",
         "mcp",
+        "gui",
     }
 )

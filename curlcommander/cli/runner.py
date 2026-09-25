@@ -133,6 +133,8 @@ def run_cli(args) -> int:
                 return _run_engagement(args)
             case "mcp":
                 return _run_mcp(args, repo)
+            case "gui":
+                return _run_gui(args, repo)
             case _:
                 return _run_request(args, repo)
     except scope.ScopeError as exc:
@@ -1312,6 +1314,49 @@ def _run_mcp(args, repo) -> int:
     except MCPToolError as exc:
         _console.print(f"[red]Error:[/red] {exc}")
         return EXIT_USAGE
+    return EXIT_OK
+
+
+def _run_gui(args, repo) -> int:
+    """`curlcmd gui` — graphical web interface served locally, opened in browser."""
+    import time
+    import webbrowser
+
+    from curlcommander.core import webserver
+    from curlcommander.core.mcp_tools import ToolContext
+
+    scope_entries = scope.load_scope(args.scope) if getattr(args, "scope", None) else []
+    ctx = ToolContext(
+        repo=repo,
+        engagement=getattr(args, "engagement", "") or "",
+        scope_entries=scope_entries,
+    )
+    host = getattr(args, "host", "127.0.0.1")
+    port = getattr(args, "port", 8777)
+    try:
+        httpd = webserver.serve(ctx, host=host, port=port)
+    except OSError as exc:
+        _console.print(f"[red]Não foi possível iniciar a GUI na porta {port}:[/red] {exc}")
+        return EXIT_USAGE
+
+    url = f"http://{host}:{port}/"
+    _console.print(
+        f"[green]Interface gráfica em[/green] {url} "
+        f"[dim](engagement {ctx.engagement or '-'}, escopo {len(scope_entries)} host(s))[/dim]"
+    )
+    _console.print("[dim]Ctrl-C para parar.[/dim]")
+    if not getattr(args, "no_browser", False):
+        try:
+            webbrowser.open(url)
+        except Exception:  # noqa: BLE001 - headless env: just print the URL
+            pass
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        _console.print("\n[dim]GUI parada.[/dim]")
+    finally:
+        httpd.shutdown()
     return EXIT_OK
 
 

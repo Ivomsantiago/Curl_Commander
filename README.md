@@ -86,7 +86,7 @@ gerenciado com um atalho `curlcmd` — resolve o seu PATH, é idempotente e acei
 2. [Primeiros passos: `setup` e `doctor`](#2-primeiros-passos-setup-e-doctor)
 3. [Segurança](#3-segurança)
 4. [CLI](#4-cli)
-5. [Interface no terminal (TUI)](#5-interface-no-terminal-tui)
+5. [Interfaces: gráfica (GUI) e terminal (TUI)](#5-interfaces-gráfica-gui-e-terminal-tui)
 6. [Armazenamento do histórico](#6-armazenamento-do-histórico)
 7. [Bug bounty — payloads → fuzz → discover](#7-bug-bounty--payloads--fuzz--discover)
 8. [Validação por navegador e proxy interceptador](#8-validação-por-navegador-e-proxy-interceptador)
@@ -425,7 +425,26 @@ Códigos de saída: `0` ok · `1` uso/parse · `2` rede/DNS/TLS/timeout ·
 
 ---
 
-## 5. Interface no terminal (TUI)
+## 5. Interfaces: gráfica (GUI) e terminal (TUI)
+
+### Interface gráfica (GUI no navegador)
+
+```bash
+curlcmd gui                                  # abre a GUI no navegador
+curlcmd gui --port 8777 --engagement ENG --scope escopo.txt
+curlcmd gui --no-browser                     # só sobe o servidor, imprime a URL
+```
+
+`curlcmd gui` sobe um servidor local (stdlib, **sem framework novo**) e abre uma
+interface **gráfica** no navegador — não é a TUI de terminal. A UI (tema escuro)
+tem barra lateral com: **Requisição/Repeater** (método, URL, headers, body,
+prévia de `curl` ao vivo, importar `curl`), **Resposta** (status/headers/corpo),
+**Histórico** (clique numa linha para carregar no Repeater), **Proxy** (mostra o
+tráfego capturado; inicie o proxy pela CLI e capture com o navegador roteado) e
+**Escopo** (aplica também às ferramentas da IA via MCP). A API JSON por trás
+(`/api/...`) reusa a mesma camada de lógica do servidor MCP.
+
+### Interface no terminal (TUI)
 
 ```bash
 curlcmd --gui
